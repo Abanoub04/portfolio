@@ -23,13 +23,14 @@ Work only through your tools:
 2. Apply the keyword rules. They handle the obvious rows.
 3. For each row the rules left open, decide the category yourself and record it with \
 set_category, giving a one-sentence reason a controller would accept. Use the description, \
-counterparty and amount. If the purpose really cannot be known (e.g. a transfer to a \
-person), use Other and say in the reason that it needs to be checked.
+counterparty and amount. If you are unsure (e.g. a transfer to a private person with no \
+stated purpose), still choose the most likely category, but set needs_review to true and \
+say in review_reason what a person should check.
 4. Save the categorized data. Saving only works when every row has a category.
 
 If a tool returns an error, read it, fix the cause and continue.
-When done, reply with a short summary: transactions per category, and which rows you \
-categorized yourself and why."""
+When done, reply with a short summary: transactions per category, which rows you \
+categorized yourself and why, and which rows need review."""
 
 # What the Categorizer does in test mode (no API key). In real mode the AI
 # decides these three rows itself. The line numbers are the rows in
@@ -40,10 +41,12 @@ FAKE_SCRIPT = [
     {"tool": "set_category", "input": {"source_line": 29, "category": "Other",
         "reason": "Card payment at a supermarket (Albert) - small office purchase."}},
     {"tool": "set_category", "input": {"source_line": 43, "category": "Other",
-        "reason": "Card payment at an electronics retailer (Alza) - office equipment; "
-                  "check if it should be capitalised."}},
+        "reason": "Card payment at an electronics retailer (Alza) - small office equipment, "
+                  "below the asset threshold, so expensed."}},
     {"tool": "set_category", "input": {"source_line": 47, "category": "Other",
-        "reason": "Transfer to a private person with no stated purpose - needs to be checked."}},
+        "reason": "Transfer to a private person; most likely a small service or expense refund.",
+        "needs_review": True,
+        "review_reason": "No stated purpose - confirm what the payment was for and get a document."}},
     {"tool": "save_categorized_data"},
     {"text": "(test mode) Categorizing finished - see save_categorized_data in the log for the counts."},
 ]

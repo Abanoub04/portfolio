@@ -88,10 +88,14 @@ ledgermind/
 
 ## Current status
 - Stage 1 (Setup and data) – done
-- Stage 2 (Agent engine) – built
-- Current stage: 3 (Bookkeeping department) – built, waiting for Abanoub's go-ahead
-- Bookkeeping output: output/transactions_clean.csv, output/exceptions.csv,
-  output/transactions_categorized.csv (generated, not committed)
+- Stage 2 (Agent engine) – done
+- Stage 3 (Bookkeeping department) – done
+- Current stage: 4 (Reporting department) – built, waiting for Abanoub's go-ahead
+- Generated (not committed) in output/: transactions_clean.csv, exceptions.csv,
+  transactions_categorized.csv, analysis_YYYY-MM.json (Analyst),
+  report_YYYY-MM.md (Writer)
+- Writer number check: save_report rejects text containing any number that
+  is not in the Analyst's analysis file.
 - Test mode: without ANTHROPIC_API_KEY, agents use a scripted fake model
   (`agents/models.py`). Run tests with `python -m unittest -v`.
 - Update this section after each finished stage.
