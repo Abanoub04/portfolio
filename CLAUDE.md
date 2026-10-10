@@ -1,83 +1,91 @@
-# LedgerMind – Project instructions for Claude Code
+# LedgerMind – Build brief for Claude Code
 
-## What this project is
-LedgerMind is a practice project for learning Python and AI agents.
-It simulates a tiny accounting firm run only by AI agents. The firm takes a
-month of business transactions and produces a monthly expense report.
+## What we are building
+LedgerMind is a small company run entirely by AI agents. It works as a
+mini accounting firm: it receives one month of business transactions and
+delivers a monthly expense report.
 
-The developer, Abanoub, is a beginner in Python and is learning by building
-this project. He works in finance (controllership), so finance concepts are
-familiar to him; Python and AI agents are new.
+The owner, Abanoub, directs the project and plans it in a separate chat.
+You (Claude Code) do the building. Abanoub works in finance
+(controllership), so the accounting logic should make sense to a
+professional.
 
-A visual overview of the whole project is in `docs/ledgermind-mindmap.html`.
+A visual overview of the company is in `docs/ledgermind-mindmap.html`.
 
-## How we work (most important section)
-This is a LEARNING project, not a speed project. Follow these rules:
+## The company
+Five AI agents, each with its own role, instructions and tools.
 
-1. Work on ONE task at a time. Only do the task Abanoub gives you.
-   Do not build future stages or "helpful extras" in advance.
-2. Before writing code, briefly explain your plan in simple English.
-3. When Abanoub says he wants to try first, guide him with hints instead of
-   writing the full solution.
-4. Keep code simple and readable. Prefer clear beginner-friendly code over
-   clever or compact code.
-5. Add short comments explaining what each part does and why.
-6. After finishing a task, give a short summary: which files changed,
-   what the code does, and how to run it.
-7. If something is unclear, ask one question instead of guessing.
-8. Use only fake data. Never ask for or use real company data.
-9. Never put API keys or passwords in code files. Use environment variables
-   (from Stage 3 onward).
-
-## The company (the agents)
-- **Manager** – the only agent that talks to the user. Assigns work, passes
-  results between departments, reviews the final report.
+- **Manager** – the only agent that talks to the user. Receives the job,
+  delegates to the two departments, passes results between them, reviews
+  the final report and sends it back if something is wrong.
 - **Bookkeeping department**
-  - **Collector** – reads the transactions file and cleans it (fix dates,
-    remove duplicates, flag missing amounts).
-  - **Categorizer** – labels each transaction (Salaries, Rent, Travel,
-    Software, Sales, Other...).
+  - **Collector** – reads the raw transactions file and cleans it: fixes
+    date formats, removes duplicates, flags rows with missing amounts.
+  - **Categorizer** – assigns each transaction a category (Salaries, Rent,
+    Travel, Software, Marketing, Utilities, Sales, Other).
 - **Reporting department**
-  - **Analyst** – totals per category, comparison to budget, finds unusual costs.
-  - **Writer** – turns the numbers into a short readable report.
+  - **Analyst** – totals per category, comparison with budget, flags
+    unusual items (e.g. a category more than 20% over budget).
+  - **Writer** – writes the final report in clear business English.
 
 Job flow: User → Manager → Collector → Categorizer → Manager → Analyst →
 Writer → Manager (review) → User.
 
-## Build stages
-1. **Foundations** – toolbox lesson (calling functions by name), create fake
-   `transactions.csv` and `budget.csv`.
-2. **Rule-based employees** – each agent as plain Python with fixed rules,
-   no AI. Manager runs them in order.
-3. **AI brains** – connect to an AI model; give AI to Categorizer and Writer
-   first, then Analyst.
-4. **True agents** – each employee chooses its own tools in a loop; Manager
-   delegates and reviews.
-5. **Reliability** – verify totals against raw data, error handling, logging.
-
-## Current status
-- Current stage: 1 (Foundations)
-- Current task: project setup
-- Update this section when Abanoub says a task is finished.
+## Design rules
+1. Every agent is a real AI agent: an AI model + its own tools + a loop
+   (decide → use tool → read result → repeat until done).
+2. Agents can only act through their tools. Tools are normal Python
+   functions.
+3. **All calculations are done by Python tools, never by the AI model
+   itself.** The model decides what to calculate; the tool calculates.
+   This keeps the numbers correct.
+4. The Manager delegates through tools (e.g. `ask_collector`,
+   `ask_analyst`). Each department agent is called like a tool.
+5. Every agent action is written to a log, so we can see who did what.
+6. The Manager must verify the final totals against the cleaned data
+   before delivering the report.
+7. Only fake data. No real company data.
+8. The API key is read from the environment variable `ANTHROPIC_API_KEY`.
+   Never write keys into files.
 
 ## Technical choices
-- Language: Python 3
-- Stages 1–2: Python standard library only (e.g. `csv`, `datetime`).
-  No pandas or other packages unless Abanoub asks.
-- Stage 3+: packages will be added one at a time with explanation.
-- Each agent lives in its own file in `agents/`.
-- Tool functions live in `tools/`.
-- Run everything from the project root with `python main.py`.
+- Python 3, Anthropic Python SDK (`anthropic`) with tool use.
+- Model name stored in one place (`config.py`) so it is easy to change.
+- Each agent in its own file in `agents/`; shared agent loop in
+  `agents/base_agent.py`.
+- Tool functions in `tools/`.
+- Run the whole company with `python main.py`.
 
-## Folder structure (target – create folders only when needed)
+## Folder structure
 ```
 ledgermind/
 ├── CLAUDE.md
+├── config.py            # model name, settings
 ├── main.py              # starts the company
-├── docs/                # mind map and notes
-├── lessons/             # practice exercises (e.g. toolbox.py)
-├── data/                # transactions.csv, budget.csv (fake data)
-├── agents/              # manager.py, collector.py, categorizer.py, analyst.py, writer.py
-├── tools/               # tool functions used by the agents
-└── output/              # generated reports
+├── docs/                # mind map
+├── data/                # transactions.csv, budget.csv (fake)
+├── agents/              # base_agent.py, manager.py, collector.py,
+│                        # categorizer.py, analyst.py, writer.py
+├── tools/               # tool functions per department
+├── logs/                # action logs per run
+└── output/              # finished reports
 ```
+
+## Build stages
+1. **Setup and data** – folders, config, requirements, fake data with
+   realistic messiness (duplicates, mixed date formats, missing amounts).
+2. **Agent engine** – the shared agent loop in `base_agent.py` + logging.
+3. **Bookkeeping department** – Collector and Categorizer with tools.
+4. **Reporting department** – Analyst and Writer with tools.
+5. **Manager** – delegation, review, and verification of totals.
+6. **Full run** – `python main.py` produces a report end to end.
+
+## How to work
+- Build one stage at a time. After each stage, stop, summarize what was
+  built and how to test it, and wait for Abanoub's go-ahead.
+- Test each stage before reporting it as done.
+- If a decision is unclear, ask one question.
+
+## Current status
+- Current stage: 1 (Setup and data) – built, waiting for Abanoub's go-ahead
+- Update this section after each finished stage.
