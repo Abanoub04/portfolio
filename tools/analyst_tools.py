@@ -1,0 +1,323 @@
+"""The Analyst's tools: every number in the report is calculated here.
+
+The Analyst (the AI) only decides which calculation to run. Python does
+the arithmetic, with Decimal so money is exact to the haléř.
+
+Sign convention in the analysis: expenses are shown as positive spend
+amounts (like a budget report), sales income as a positive amount.
+Variance = actual - budget, so a positive variance means OVER budget.
+
+The result is saved as one file (output/analysis_YYYY-MM.json). It is the
+Writer's only source of numbers. Every amount in it is already formatted
+for the report (e.g. "42,000" and "+68.0%"), so the Writer only copies.
+"""
+
+import json
+from decimal import Decimal, ROUND_HALF_UP
+from pathlib import Path
+
+import config
+from tools.csv_helpers import read_csv
+
+
+def format_czk(amount):
+    """42000 -> "42,000"; 1289.5 -> "1,289.50" (decimals only when needed)."""
+    if amount == amount.to_integral_value():
+        return f"{amount:,.0f}"
+    return f"{amount:,.2f}"
+
+
+def format_signed_czk(amount):
+    """Variance in CZK with a sign: +17,000 or -5,370."""
+    sign = "+" if amount > 0 else "-" if amount < 0 else ""
+    return sign + format_czk(abs(amount))
+
+
+def format_percent(value):
+    """Variance in % with one decimal and a sign: +68.0%. None -> "n/a"."""
+    if value is None:
+        return "n/a"
+    sign = "+" if value > 0 else ""
+    return f"{sign}{value}%"
+
+
+class ReportAnalyst:
+    """Holds the month's data in memory while the Analyst works."""
+
+    def __init__(self, output_dir=None, budget_file=None):
+        self.output_dir = Path(output_dir or config.OUTPUT_DIR)
+        self.budget_file = Path(budget_file or config.BUDGET_FILE)
+        self.transactions = []
+        self.exceptions = []
+        self.budget = {}
+        # The results of each calculation, filled in by the tools below.
+        self.results = {}
+
+    def require_loaded(self):
+        if not self.transactions:
+            raise RuntimeError("No data loaded - call load_month_data first")
+
+    def expense_categories(self):
+        """All categories except Sales, in the order from config.py."""
+        return [category for category in config.CATEGORIES if category != "Sales"]
+
+    def actual_spend(self, category):
+        """Spend in one category as a positive amount."""
+        total = Decimal(0)
+        for row in self.transactions:
+            if row["category"] == category:
+                total += Decimal(row["amount_czk"])
+        return -total if category != "Sales" else total
+
+    # --- tools ------------------------------------------------------------
+
+    def load_month_data(self):
+        """Read the categorized transactions, the budget and the exceptions."""
+        categorized_path = self.output_dir / config.CATEGORIZED_FILE_NAME
+        if not categorized_path.exists():
+            raise FileNotFoundError(f"{categorized_path.name} not found - the Bookkeeping department must run first")
+
+        self.transactions = read_csv(categorized_path)
+        self.exceptions = read_csv(self.output_dir / config.EXCEPTIONS_FILE_NAME)
+        self.budget = {}
+        for row in read_csv(self.budget_file):
+            self.budget[row["category"]] = Decimal(row["budget_czk"])
+        self.results = {}
+
+        return {
+            "transactions": len(self.transactions),
+            "exceptions": len(self.exceptions),
+            "budget_categories": list(self.budget),
+        }
+
+    def calculate_totals(self):
+        """Total spend per category, total expenses and sales income."""
+        self.require_loaded()
+
+        categories = []
+        total_expenses = Decimal(0)
+        for category in self.expense_categories():
+            spend = self.actual_spend(category)
+            count = sum(1 for row in self.transactions if row["category"] == category)
+            total_expenses += spend
+            categories.append({"category": category, "transactions": count, "actual_czk": format_czk(spend)})
+
+        sales = self.actual_spend("Sales")
+        sales_count = sum(1 for row in self.transactions if row["category"] == "Sales")
+
+        self.results["totals"] = {
+            "categories": categories,
+            "total_expenses_czk": format_czk(total_expenses),
+            "expense_transactions": len(self.transactions) - sales_count,
+            "sales_income_czk": format_czk(sales),
+            "sales_transactions": sales_count,
+            "result_czk": format_signed_czk(sales - total_expenses),
+        }
+        return self.results["totals"]
+
+    def compare_to_budget(self):
+        """Budget vs actual per expense category: variance in CZK and %."""
+        self.require_loaded()
+
+        rows = []
+        total_actual = Decimal(0)
+        total_budget = Decimal(0)
+        for category in self.expense_categories():
+            actual = self.actual_spend(category)
+            budget = self.budget.get(category, Decimal(0))
+            total_actual += actual
+            total_budget += budget
+            rows.append(self.variance_row(category, actual, budget))
+
+        self.results["budget_vs_actual"] = {
+            "categories": rows,
+            "total": self.variance_row("Total expenses", total_actual, total_budget),
+            "note": "Variance = actual - budget; + means over budget",
+        }
+        return self.results["budget_vs_actual"]
+
+    def variance_row(self, name, actual, budget):
+        variance = actual - budget
+        if budget == 0:
+            percent = None
+        else:
+            percent = (variance / budget * 100).quantize(Decimal("0.1"), rounding=ROUND_HALF_UP)
+        return {
+            "category": name,
+            "actual_czk": format_czk(actual),
+            "budget_czk": format_czk(budget),
+            "variance_czk": format_signed_czk(variance),
+            "variance_percent": format_percent(percent),
+            # Kept unformatted too, so find_unusual_items can compare it.
+            "_percent_value": None if percent is None else str(percent),
+        }
+
+    def find_unusual_items(self):
+        """Categories more than the threshold over budget, spend with no budget,
+        and single expenses above the large-transaction threshold
+        (outside the excluded categories)."""
+        self.require_loaded()
+        if "budget_vs_actual" not in self.results:
+            self.compare_to_budget()
+
+        threshold_percent = Decimal(str(config.OVER_BUDGET_THRESHOLD * 100))
+        over_budget = []
+        for row in self.results["budget_vs_actual"]["categories"]:
+            if row["_percent_value"] is None:
+                if row["actual_czk"] != "0":
+                    over_budget.append({**self.public(row), "why": "spend with no budget"})
+                continue
+            if Decimal(row["_percent_value"]) > threshold_percent:
+                over_budget.append({**self.public(row), "why": f"more than {threshold_percent:.0f}% over budget"})
+
+        # For each flagged category, its 3 largest expenses, so the report
+        # can explain what drove the overspend.
+        for item in over_budget:
+            rows = [row for row in self.transactions if row["category"] == item["category"]]
+            rows.sort(key=lambda row: Decimal(row["amount_czk"]))  # most negative = largest spend first
+            item["largest_items"] = [
+                {"source_line": int(row["source_line"]), "description": row["description"],
+                 "amount_czk": format_czk(-Decimal(row["amount_czk"]))}
+                for row in rows[:3]
+            ]
+
+        large = []
+        limit = Decimal(config.LARGE_TRANSACTION_THRESHOLD)
+        for row in self.transactions:
+            if row["category"] == "Sales" or row["category"] in config.LARGE_TRANSACTION_EXCLUDED_CATEGORIES:
+                continue
+            spend = -Decimal(row["amount_czk"])
+            if spend > limit:
+                large.append({
+                    "source_line": int(row["source_line"]),
+                    "date": row["date"],
+                    "description": row["description"],
+                    "category": row["category"],
+                    "amount_czk": format_czk(spend),
+                })
+
+        self.results["unusual_items"] = {
+            "over_budget_threshold": f"{threshold_percent:.0f}%",
+            "categories_over_budget": over_budget,
+            "large_transaction_threshold_czk": format_czk(limit),
+            "large_transactions_excluding": config.LARGE_TRANSACTION_EXCLUDED_CATEGORIES,
+            "large_transactions": large,
+        }
+        return self.results["unusual_items"]
+
+    def public(self, row):
+        """A copy of a row without the internal fields (those starting with _)."""
+        return {key: value for key, value in row.items() if not key.startswith("_")}
+
+    def summarize_exceptions(self):
+        """Duplicates removed, missing amounts and rows needing review."""
+        self.require_loaded()
+
+        duplicates = []
+        duplicates_total = Decimal(0)
+        missing = []
+        other_issues = []
+        for row in self.exceptions:
+            if row["issue"] == "duplicate":
+                amount = -Decimal(row["amount_czk"])
+                duplicates_total += amount
+                duplicates.append({"source_line": int(row["source_line"]), "date": row["date"],
+                                   "description": row["description"], "amount_czk": format_czk(amount),
+                                   "detail": row["detail"]})
+            elif row["issue"] == "missing amount":
+                missing.append({"source_line": int(row["source_line"]), "date": row["date"],
+                                "description": row["description"], "counterparty": row["counterparty"]})
+            else:
+                other_issues.append({"source_line": int(row["source_line"]), "issue": row["issue"],
+                                     "detail": row["detail"]})
+
+        needs_review = []
+        for row in self.transactions:
+            if row.get("needs_review") == "yes":
+                needs_review.append({"source_line": int(row["source_line"]), "date": row["date"],
+                                     "description": row["description"], "category": row["category"],
+                                     "amount_czk": format_czk(abs(Decimal(row["amount_czk"]))),
+                                     "review_reason": row["review_reason"]})
+
+        self.results["exceptions"] = {
+            "duplicates_removed": duplicates,
+            "duplicates_count": len(duplicates),
+            "duplicates_total_czk": format_czk(duplicates_total),
+            "missing_amounts": missing,
+            "missing_amounts_count": len(missing),
+            "other_issues": other_issues,
+            "needs_review": needs_review,
+            "needs_review_count": len(needs_review),
+        }
+        return self.results["exceptions"]
+
+    def save_analysis(self):
+        """Save all results for the Writer. Only works when every part is done."""
+        needed = ["totals", "budget_vs_actual", "unusual_items", "exceptions"]
+        missing = [part for part in needed if part not in self.results]
+        if missing:
+            raise RuntimeError(f"Not finished yet - still missing: {missing}")
+
+        # Drop the internal fields before saving.
+        budget = self.results["budget_vs_actual"]
+        analysis = {
+            "report_month": config.REPORT_MONTH,
+            "currency": config.CURRENCY,
+            "totals": self.results["totals"],
+            "budget_vs_actual": {
+                "categories": [self.public(row) for row in budget["categories"]],
+                "total": self.public(budget["total"]),
+                "note": budget["note"],
+            },
+            "unusual_items": self.results["unusual_items"],
+            "exceptions": self.results["exceptions"],
+        }
+
+        path = self.output_dir / config.ANALYSIS_FILE_NAME
+        path.write_text(json.dumps(analysis, indent=2, ensure_ascii=False), encoding="utf-8")
+        return {"file": path.name, "sections": list(analysis)}
+
+
+def make_analyst_tools(analyst):
+    """The Analyst's tool list."""
+    no_inputs = {"type": "object", "properties": {}}
+    return [
+        {
+            "name": "load_month_data",
+            "description": "Load the categorized transactions, the budget and the exceptions list.",
+            "input_schema": no_inputs,
+            "function": analyst.load_month_data,
+        },
+        {
+            "name": "calculate_totals",
+            "description": "Calculate total spend per expense category, total expenses and sales income.",
+            "input_schema": no_inputs,
+            "function": analyst.calculate_totals,
+        },
+        {
+            "name": "compare_to_budget",
+            "description": "Compare actual spend with budget per category: variance in CZK and %.",
+            "input_schema": no_inputs,
+            "function": analyst.compare_to_budget,
+        },
+        {
+            "name": "find_unusual_items",
+            "description": f"Find categories more than {config.OVER_BUDGET_THRESHOLD:.0%} over budget and single "
+                           f"expenses above {config.LARGE_TRANSACTION_THRESHOLD:,} CZK outside "
+                           f"{' and '.join(config.LARGE_TRANSACTION_EXCLUDED_CATEGORIES)}.",
+            "input_schema": no_inputs,
+            "function": analyst.find_unusual_items,
+        },
+        {
+            "name": "summarize_exceptions",
+            "description": "Summarize duplicates removed, missing amounts to follow up and rows needing review.",
+            "input_schema": no_inputs,
+            "function": analyst.summarize_exceptions,
+        },
+        {
+            "name": "save_analysis",
+            "description": "Save all results for the Writer. Call this last.",
+            "input_schema": no_inputs,
+            "function": analyst.save_analysis,
+        },
+    ]

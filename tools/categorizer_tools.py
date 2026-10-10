@@ -6,6 +6,8 @@ How it works:
      in Python, so it gives the same answer every time.
   2. Rows the keywords can't decide are left for the AI. It looks at each
      one and calls set_category() with a category and a short reason.
+     If the AI is unsure, it still picks one category but also sets a
+     "needs review" flag with a short reason, so a person checks it.
   3. save_categorized_data() refuses to save until every row has exactly
      one category from the allowed list.
 
@@ -21,7 +23,7 @@ import config
 from tools.csv_helpers import read_csv, write_csv
 
 CATEGORIZED_COLUMNS = ["source_line", "date", "description", "counterparty", "amount_czk",
-                       "category", "method", "reason"]
+                       "category", "method", "reason", "needs_review", "review_reason"]
 
 # Keyword rules: a row gets a category when its description contains one of
 # these words or phrases (as whole words, case doesn't matter).
@@ -98,6 +100,8 @@ class TransactionCategorizer:
             row["category"] = ""
             row["method"] = ""
             row["reason"] = ""
+            row["needs_review"] = "no"
+            row["review_reason"] = ""
         return {"file": path.name, "rows_loaded": len(self.rows)}
 
     def apply_keyword_rules(self):
@@ -141,8 +145,9 @@ class TransactionCategorizer:
         """Show the rows that still have no category."""
         return [self.short_view(row) for row in self.rows if not row["category"]]
 
-    def set_category(self, source_line, category, reason):
-        """Give one uncategorized row its category (decided by the AI)."""
+    def set_category(self, source_line, category, reason, needs_review=False, review_reason=""):
+        """Give one uncategorized row its category (decided by the AI).
+        If the AI is unsure, needs_review=True flags the row for a person."""
         if category not in config.CATEGORIES:
             raise ValueError(f"'{category}' is not allowed. Use one of: {', '.join(config.CATEGORIES)}")
 
@@ -157,10 +162,21 @@ class TransactionCategorizer:
         if problem:
             raise ValueError(f"Line {source_line}: {problem}")
 
+        if needs_review and not review_reason.strip():
+            raise ValueError("needs_review is set, so review_reason must say what should be checked")
+
         row["category"] = category
         row["method"] = "AI"
         row["reason"] = reason.strip() or "(no reason given)"
-        return {"source_line": int(source_line), "category": category, "still_uncategorized": len(self.list_uncategorized())}
+        if needs_review:
+            row["needs_review"] = "yes"
+            row["review_reason"] = review_reason.strip()
+        return {
+            "source_line": int(source_line),
+            "category": category,
+            "needs_review": row["needs_review"],
+            "still_uncategorized": len(self.list_uncategorized()),
+        }
 
     def save_categorized_data(self):
         """Save the categorized file. Refuses while any row has no category."""
@@ -184,6 +200,7 @@ class TransactionCategorizer:
             "rows_saved": len(self.rows),
             "transactions_per_category": per_category,
             "categorized_by": by_method,
+            "needs_review": [int(row["source_line"]) for row in self.rows if row["needs_review"] == "yes"],
         }
 
 
@@ -213,13 +230,18 @@ def make_categorizer_tools(categorizer):
         {
             "name": "set_category",
             "description": "Give one uncategorized transaction its category, with a short reason "
-                           "a controller would accept. Only for rows the keyword rules left open.",
+                           "a controller would accept. Only for rows the keyword rules left open. "
+                           "If unsure, still choose one category and set needs_review with a reason.",
             "input_schema": {
                 "type": "object",
                 "properties": {
                     "source_line": {"type": "integer", "description": "The row's source_line"},
                     "category": {"type": "string", "enum": config.CATEGORIES},
                     "reason": {"type": "string", "description": "One sentence: why this category"},
+                    "needs_review": {"type": "boolean",
+                                     "description": "true if you are unsure and a person should check this row"},
+                    "review_reason": {"type": "string",
+                                      "description": "Required when needs_review is true: what should be checked"},
                 },
                 "required": ["source_line", "category", "reason"],
             },

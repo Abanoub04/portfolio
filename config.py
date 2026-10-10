@@ -41,6 +41,10 @@ CLEAN_FILE_NAME = "transactions_clean.csv"           # Collector: clean rows
 EXCEPTIONS_FILE_NAME = "exceptions.csv"              # Collector: rows set aside
 CATEGORIZED_FILE_NAME = "transactions_categorized.csv"  # Categorizer
 
+# Files produced by the Reporting department (written to output/).
+ANALYSIS_FILE_NAME = f"analysis_{REPORT_MONTH}.json"  # Analyst: all the numbers
+REPORT_FILE_NAME = f"report_{REPORT_MONTH}.md"        # Writer: the final report
+
 # --- Date formats ---------------------------------------------------------
 # The date formats the Collector understands, and how each is named.
 # Slash dates are read day-first (DD/MM/YYYY), as is normal in Czechia.
@@ -55,6 +59,11 @@ DATE_FORMATS = {
 # The Analyst flags a category as unusual when actual spend is more than
 # this share above budget (0.20 = 20 %).
 OVER_BUDGET_THRESHOLD = 0.20
+
+# The Analyst also flags any single expense above this amount (CZK),
+# except in these categories, where large payments are normal.
+LARGE_TRANSACTION_THRESHOLD = 20000
+LARGE_TRANSACTION_EXCLUDED_CATEGORIES = ["Salaries", "Rent"]
 
 # The categories the Categorizer is allowed to use.
 CATEGORIES = [
