@@ -1,0 +1,2 @@
+# Anthropic Python SDK - used from Stage 2 (agent engine) onward.
+anthropic>=1.13,<2

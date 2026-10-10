@@ -1,0 +1,14 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Secrets - never commit API keys
+.env
+
+# Generated at run time (the folders themselves are kept via .gitkeep)
+logs/*
+!logs/.gitkeep
+output/*
+!output/.gitkeep
