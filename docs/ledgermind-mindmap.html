@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LedgerMind mind map</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Libre+Franklin:wght@400;500;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --paper: #EEF2EA;
+    --grid: #D3DDCF;
+    --ink: #1D3352;
+    --ink-soft: #4A5D78;
+    --green: #2E6A4C;
+    --red: #A9342B;
+    --node: #FBFCF9;
+    --line: #9DB3A2;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --paper: #16201B;
+      --grid: #223029;
+      --ink: #E4ECE6;
+      --ink-soft: #A7B8AD;
+      --green: #7CC39C;
+      --red: #E58A80;
+      --node: #1D2A23;
+      --line: #4F6B5A;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: "Libre Franklin", "Segoe UI", Helvetica, Arial, sans-serif;
+    color: var(--ink);
+    background-color: var(--paper);
+    background-image:
+      linear-gradient(var(--grid) 1px, transparent 1px);
+    background-size: 100% 28px;
+    line-height: 1.45;
+  }
+  main { max-width: 1280px; margin: 0 auto; padding: 40px 20px 64px; }
+
+  /* Root */
+  .root {
+    text-align: center;
+    margin-bottom: 8px;
+  }
+  .root h1 {
+    display: inline-block;
+    margin: 0;
+    font-size: clamp(2rem, 5vw, 3.2rem);
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    padding: 10px 28px;
+    border: 3px double var(--ink);
+    background: var(--node);
+  }
+  .root p {
+    margin: 12px auto 0;
+    max-width: 60ch;
+    color: var(--ink-soft);
+  }
+  .trunk {
+    width: 2px; height: 28px; margin: 0 auto; background: var(--line);
+  }
+
+  /* Branch row */
+  .branches {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 18px;
+    border-top: 2px solid var(--line);
+    padding-top: 0;
+  }
+  .branch { position: relative; padding-top: 26px; }
+  .branch::before {
+    content: ""; position: absolute; top: 0; left: 50%;
+    width: 2px; height: 26px; background: var(--line);
+  }
+  .branch > h2 {
+    margin: 0 0 14px;
+    font-size: 1.05rem;
+    font-weight: 700;
+    text-align: center;
+    padding: 8px 10px;
+    background: var(--ink);
+    color: var(--node);
+    border-radius: 4px;
+  }
+  .branch.steps > h2 { background: var(--green); }
+
+  /* Tree */
+  ul.tree { list-style: none; margin: 0; padding: 0 0 0 14px; border-left: 2px solid var(--line); }
+  ul.tree ul.tree { margin-top: 6px; }
+  ul.tree li { position: relative; margin: 0 0 8px; padding-left: 12px; }
+  ul.tree li::before {
+    content: ""; position: absolute; left: -14px; top: 0.95em;
+    width: 22px; height: 2px; background: var(--line);
+  }
+  .node {
+    display: block;
+    background: var(--node);
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    padding: 6px 9px;
+    font-size: 0.9rem;
+  }
+  .node strong { font-weight: 700; }
+  .node small { display: block; color: var(--ink-soft); font-size: 0.8rem; margin-top: 2px; }
+  .tool { color: var(--green); font-weight: 500; }
+
+  /* Collapsible */
+  details > summary {
+    list-style: none; cursor: pointer;
+  }
+  details > summary::-webkit-details-marker { display: none; }
+  details > summary .node::after {
+    content: "+"; float: right; font-weight: 700; color: var(--ink-soft); margin-left: 6px;
+  }
+  details[open] > summary .node::after { content: "–"; }
+  summary:focus-visible .node { outline: 3px solid var(--green); outline-offset: 2px; }
+
+  /* Numbered stages */
+  .num {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 1.6em; height: 1.6em; margin-right: 6px;
+    border-radius: 50%; background: var(--green); color: var(--node);
+    font-size: 0.8rem; font-weight: 700;
+  }
+  .now { border-color: var(--red); border-width: 2px; }
+  .now small { color: var(--red); font-weight: 500; }
+
+  footer { margin-top: 36px; text-align: center; color: var(--ink-soft); font-size: 0.85rem; }
+
+  @media (max-width: 1000px) {
+    .branches { grid-template-columns: repeat(2, minmax(0, 1fr)); border-top: none; }
+    .branch::before { display: none; }
+  }
+  @media (max-width: 620px) {
+    .branches { grid-template-columns: 1fr; }
+  }
+  @media print {
+    details { open: true; }
+    body { background: #fff; }
+  }
+</style>
+</head>
+<body>
+<main>
+
+  <div class="root">
+    <h1>LedgerMind</h1>
+    <p>A tiny accounting firm run only by AI agents. It turns a month of transactions into a clear expense report. Click any item with + to open it.</p>
+  </div>
+  <div class="trunk"></div>
+
+  <div class="branches">
+
+    <!-- Branch 1: Build steps -->
+    <section class="branch steps">
+      <h2>Build steps</h2>
+      <ul class="tree">
+        <li>
+          <details open>
+            <summary><span class="node"><span class="num">1</span><strong>Foundations</strong></span></summary>
+            <ul class="tree">
+              <li><span class="node now">Lesson 1: the toolbox<small>You are here</small></span></li>
+              <li><span class="node">Create a fake transactions file</span></li>
+              <li><span class="node">Create a budget file</span></li>
+            </ul>
+          </details>
+        </li>
+        <li>
+          <details>
+            <summary><span class="node"><span class="num">2</span><strong>Rule-based employees</strong><small>Plain Python, no AI yet</small></span></summary>
+            <ul class="tree">
+              <li><span class="node">Collector: read and clean the file</span></li>
+              <li><span class="node">Categorizer: label by keywords</span></li>
+              <li><span class="node">Analyst: totals and budget check</span></li>
+              <li><span class="node">Writer: fill a report template</span></li>
+              <li><span class="node">Manager: run everyone in order</span></li>
+            </ul>
+          </details>
+        </li>
+        <li>
+          <details>
+            <summary><span class="node"><span class="num">3</span><strong>Give them AI brains</strong></span></summary>
+            <ul class="tree">
+              <li><span class="node">Connect Python to an AI model</span></li>
+              <li><span class="node">AI Categorizer for unclear items</span></li>
+              <li><span class="node">AI Writer for natural summaries</span></li>
+              <li><span class="node">AI Analyst explains unusual costs</span></li>
+            </ul>
+          </details>
+        </li>
+        <li>
+          <details>
+            <summary><span class="node"><span class="num">4</span><strong>True agents</strong></span></summary>
+            <ul class="tree">
+              <li><span class="node">Each employee picks its own tools in a loop</span></li>
+              <li><span class="node">Manager delegates and reviews with AI</span></li>
+            </ul>
+          </details>
+        </li>
+        <li>
+          <details>
+            <summary><span class="node"><span class="num">5</span><strong>Make it reliable</strong></span></summary>
+            <ul class="tree">
+              <li><span class="node">Check totals against the raw data</span></li>
+              <li><span class="node">Handle errors without crashing</span></li>
+              <li><span class="node">Log what each agent did</span></li>
+            </ul>
+          </details>
+        </li>
+      </ul>
+    </section>
+
+    <!-- Branch 2: Manager -->
+    <section class="branch">
+      <h2>The Manager</h2>
+      <ul class="tree">
+        <li><span class="node"><strong>Role</strong><small>The only agent that talks to you. Assigns work, passes results between departments, reviews the final report.</small></span></li>
+        <li>
+          <details>
+            <summary><span class="node"><strong>Tools</strong></span></summary>
+            <ul class="tree">
+              <li><span class="node tool">send_to_bookkeeping</span></li>
+              <li><span class="node tool">send_to_reporting</span></li>
+              <li><span class="node tool">review_report</span></li>
+            </ul>
+          </details>
+        </li>
+        <li><span class="node"><strong>Key skill</strong><small>Never trust output without checking it.</small></span></li>
+      </ul>
+    </section>
+
+    <!-- Branch 3: Bookkeeping -->
+    <section class="branch">
+      <h2>Bookkeeping dept.</h2>
+      <ul class="tree">
+        <li>
+          <details open>
+            <summary><span class="node"><strong>Collector</strong><small>Reads and cleans the raw file</small></span></summary>
+            <ul class="tree">
+              <li><span class="node tool">read_file</span></li>
+              <li><span class="node tool">fix_dates</span></li>
+              <li><span class="node tool">remove_duplicates</span></li>
+              <li><span class="node tool">flag_missing_amounts</span></li>
+            </ul>
+          </details>
+        </li>
+        <li>
+          <details open>
+            <summary><span class="node"><strong>Categorizer</strong><small>Labels every transaction</small></span></summary>
+            <ul class="tree">
+              <li><span class="node tool">assign_category</span></li>
+              <li><span class="node">Salaries, Rent, Travel, Software, Sales…</span></li>
+            </ul>
+          </details>
+        </li>
+      </ul>
+    </section>
+
+    <!-- Branch 4: Reporting -->
+    <section class="branch">
+      <h2>Reporting dept.</h2>
+      <ul class="tree">
+        <li>
+          <details open>
+            <summary><span class="node"><strong>Analyst</strong><small>Turns data into numbers</small></span></summary>
+            <ul class="tree">
+              <li><span class="node tool">sum_by_category</span></li>
+              <li><span class="node tool">compare_to_budget</span></li>
+              <li><span class="node tool">find_unusual_costs</span></li>
+            </ul>
+          </details>
+        </li>
+        <li>
+          <details open>
+            <summary><span class="node"><strong>Writer</strong><small>Turns numbers into a readable report</small></span></summary>
+            <ul class="tree">
+              <li><span class="node tool">write_summary</span></li>
+              <li><span class="node tool">save_report</span></li>
+            </ul>
+          </details>
+        </li>
+      </ul>
+    </section>
+
+    <!-- Branch 5: Flow, files and skills -->
+    <section class="branch">
+      <h2>How a job flows</h2>
+      <ul class="tree">
+        <li><span class="node"><span class="num">1</span>You ask the Manager for a month's report</span></li>
+        <li><span class="node"><span class="num">2</span>Collector cleans the file</span></li>
+        <li><span class="node"><span class="num">3</span>Categorizer labels it</span></li>
+        <li><span class="node"><span class="num">4</span>Analyst calculates</span></li>
+        <li><span class="node"><span class="num">5</span>Writer drafts the report</span></li>
+        <li><span class="node"><span class="num">6</span>Manager checks and delivers</span></li>
+        <li>
+          <details>
+            <summary><span class="node"><strong>Files</strong></span></summary>
+            <ul class="tree">
+              <li><span class="node">transactions.csv<small>Input</small></span></li>
+              <li><span class="node">budget.csv<small>Input</small></span></li>
+              <li><span class="node">report.md<small>Output</small></span></li>
+            </ul>
+          </details>
+        </li>
+        <li>
+          <details>
+            <summary><span class="node"><strong>Python you'll learn</strong></span></summary>
+            <ul class="tree">
+              <li><span class="node">Functions and dictionaries</span></li>
+              <li><span class="node">Reading and writing CSV files</span></li>
+              <li><span class="node">Loops and conditions</span></li>
+              <li><span class="node">Error handling</span></li>
+              <li><span class="node">Calling an AI API and JSON</span></li>
+            </ul>
+          </details>
+        </li>
+      </ul>
+    </section>
+
+  </div>
+
+  <footer>Practice project for learning AI agents in Python, one lesson at a time.</footer>
+</main>
+</body>
+</html>
