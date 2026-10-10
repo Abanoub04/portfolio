@@ -83,7 +83,7 @@ class Agent:
                 tool_results = []
                 for block in response.content:
                     if block.type == "tool_use":
-                        tool_results.append(self.use_tool(block))
+                        tool_results.append(self.use_tool(block, step))
 
                 # All results go back together, in one message.
                 messages.append({"role": "user", "content": tool_results})
@@ -104,9 +104,10 @@ class Agent:
         self.log.write(self.name, "ERROR", f"Gave up after {config.MAX_STEPS} steps")
         raise AgentError(f"{self.name} did not finish within {config.MAX_STEPS} steps")
 
-    def use_tool(self, block):
+    def use_tool(self, block, step):
         """Run the tool the model asked for and package the result for the model."""
-        self.log.write(self.name, "TOOL CALL", f"{block.name} {json.dumps(block.input, ensure_ascii=False)}")
+        tool_input = json.dumps(block.input, ensure_ascii=False)
+        self.log.write(self.name, "TOOL CALL", f"[step {step}] {block.name} {tool_input}")
 
         tool = self.tools.get(block.name)
         if tool is None:

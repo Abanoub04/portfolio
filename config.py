@@ -36,6 +36,21 @@ OUTPUT_DIR = PROJECT_ROOT / "output"
 TRANSACTIONS_FILE = DATA_DIR / "transactions.csv"
 BUDGET_FILE = DATA_DIR / "budget.csv"
 
+# Files produced by the Bookkeeping department (written to output/).
+CLEAN_FILE_NAME = "transactions_clean.csv"           # Collector: clean rows
+EXCEPTIONS_FILE_NAME = "exceptions.csv"              # Collector: rows set aside
+CATEGORIZED_FILE_NAME = "transactions_categorized.csv"  # Categorizer
+
+# --- Date formats ---------------------------------------------------------
+# The date formats the Collector understands, and how each is named.
+# Slash dates are read day-first (DD/MM/YYYY), as is normal in Czechia.
+# Every date is converted to the first one: YYYY-MM-DD.
+DATE_FORMATS = {
+    "%Y-%m-%d": "YYYY-MM-DD",
+    "%d.%m.%Y": "DD.MM.YYYY",
+    "%d/%m/%Y": "DD/MM/YYYY",
+}
+
 # --- Business rules -------------------------------------------------------
 # The Analyst flags a category as unusual when actual spend is more than
 # this share above budget (0.20 = 20 %).

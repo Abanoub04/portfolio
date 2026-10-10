@@ -13,11 +13,22 @@ import config
 from agents.action_log import ActionLog
 from agents.base_agent import Agent, AgentError
 from agents.models import FakeModel, RealModel, create_model
-from tools.demo_tools import COUNT_ROWS_TOOL
 
 
 def add_numbers(a, b):
     return a + b
+
+
+def broken_tool():
+    raise FileNotFoundError("No file called 'missing.csv' in data/")
+
+
+BROKEN_TOOL = {
+    "name": "broken_tool",
+    "description": "A tool that always fails.",
+    "input_schema": {"type": "object", "properties": {}},
+    "function": broken_tool,
+}
 
 
 ADD_TOOL = {
@@ -75,7 +86,8 @@ class AgentLoopTests(unittest.TestCase):
         for action in ["START", "TOOL CALL", "TOOL RESULT", "FINISH"]:
             self.assertIn(f"| {action}", log)
         self.assertIn("Tester", log)
-        self.assertIn('add_numbers {"a": 1, "b": 1}', log)
+        self.assertIn('[step 1] add_numbers {"a": 1, "b": 1}', log)
+        self.assertIn("| TOOL RESULT | 2", log)
 
     def test_unknown_tool_is_reported_not_crashed(self):
         agent = self.make_agent([
@@ -92,21 +104,25 @@ class AgentLoopTests(unittest.TestCase):
 
     def test_failing_tool_is_reported_not_crashed(self):
         agent = self.make_agent(
-            [{"tool": "count_rows", "input": {"file_name": "missing.csv"}}, {"text": "File not found."}],
-            tools=[COUNT_ROWS_TOOL],
+            [{"tool": "broken_tool"}, {"text": "File not found."}],
+            tools=[BROKEN_TOOL],
         )
-        agent.run("Count rows in missing.csv")
+        agent.run("Use the broken tool.")
 
         tool_result = agent.model.received[1][-1]["content"][0]
         self.assertTrue(tool_result["is_error"])
         self.assertIn("FileNotFoundError", tool_result["content"])
 
-    def test_demo_tool_cannot_leave_data_folder(self):
-        with self.assertRaises(FileNotFoundError):
-            COUNT_ROWS_TOOL["function"]("../config.py")
+    def test_wrong_tool_inputs_are_reported_not_crashed(self):
+        agent = self.make_agent([
+            {"tool": "add_numbers", "input": {"x": 1}},
+            {"text": "Wrong inputs."},
+        ])
+        agent.run("Call a tool with wrong inputs.")
 
-    def test_demo_tool_counts_rows(self):
-        self.assertEqual(COUNT_ROWS_TOOL["function"]("budget.csv"), {"file": "budget.csv", "rows": 7})
+        tool_result = agent.model.received[1][-1]["content"][0]
+        self.assertTrue(tool_result["is_error"])
+        self.assertIn("TypeError", tool_result["content"])
 
     def test_safety_brake_stops_endless_loop(self):
         endless = [{"tool": "add_numbers", "input": {"a": 1, "b": 1}}] * (config.MAX_STEPS + 5)
