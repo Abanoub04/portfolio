@@ -87,5 +87,8 @@ ledgermind/
 - If a decision is unclear, ask one question.
 
 ## Current status
-- Current stage: 1 (Setup and data) – built, waiting for Abanoub's go-ahead
+- Stage 1 (Setup and data) – done
+- Current stage: 2 (Agent engine) – built, waiting for Abanoub's go-ahead
+- Test mode: without ANTHROPIC_API_KEY, agents use a scripted fake model
+  (`agents/models.py`). Run tests with `python -m unittest -v`.
 - Update this section after each finished stage.

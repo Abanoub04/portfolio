@@ -12,6 +12,17 @@ from pathlib import Path
 # One place to change the model used by every agent.
 MODEL = "claude-opus-5-5"
 
+# How hard the model thinks before answering: "low", "medium", "high",
+# "xhigh" or "max". Higher = smarter but slower and more expensive.
+EFFORT = "medium"
+
+# Maximum length of one model reply (in tokens, roughly 3/4 of a word each).
+MAX_TOKENS = 16000
+
+# Safety brake: an agent may go round its loop at most this many times
+# before it is stopped. Prevents an agent from looping forever.
+MAX_STEPS = 15
+
 # --- Reporting period -----------------------------------------------------
 REPORT_MONTH = "2026-09"   # September 2026
 CURRENCY = "CZK"
