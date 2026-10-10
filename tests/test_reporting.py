@@ -56,7 +56,7 @@ def report_table_rows(report):
     for line in section.splitlines():
         if not line.startswith("|") or "---" in line or "Category" in line:
             continue
-        cells = [cell.strip().replace("*", "") for cell in line.strip("|").split("|")]
+        cells = [cell.replace("*", "").strip() for cell in line.strip("|").split("|")]
         rows[cells[0]] = cells[1:]
     return rows
 
@@ -80,7 +80,7 @@ class FullReportTests(unittest.TestCase):
             create_analyst(log, output_dir=cls.output_dir).run("Analyse.")
             create_writer(log, output_dir=cls.output_dir).run("Write.")
         cls.log_text = log.path.read_text(encoding="utf-8")
-        cls.report = (cls.output_dir / config.REPORT_FILE_NAME).read_text(encoding="utf-8")
+        cls.report = (cls.output_dir / config.DRAFT_REPORT_FILE_NAME).read_text(encoding="utf-8")
         cls.analysis = json.loads((cls.output_dir / config.ANALYSIS_FILE_NAME).read_text(encoding="utf-8"))
         cls.key = read_answer_key()
         cls.table = report_table_rows(cls.report)
@@ -114,7 +114,7 @@ class FullReportTests(unittest.TestCase):
 
     def test_sales_income_matches_answer_key(self):
         sales = self.key["Sales (income)"]["actual"]
-        self.assertIn(f"Sales income for the month: {sales:,}", self.report)
+        self.assertIn(f"Side note: sales income for the month was {sales:,}", self.report)
 
     def test_flagged_categories_are_travel_and_marketing(self):
         # Answer key: Travel +70 % and Marketing +68 % are flagged; Other +16 % is below 20 %.
@@ -144,7 +144,30 @@ class FullReportTests(unittest.TestCase):
         summary = self.report.split("## Summary", 1)[1].split("##", 1)[0]
         total = self.key["Total expenses"]
         self.assertIn(f"{total['actual']:,} CZK against a budget of {total['budget']:,} CZK", summary)
-        self.assertIn(f"Sales income was {self.key['Sales (income)']['actual']:,} CZK", summary)
+        self.assertIn(f"Side note: sales income was {self.key['Sales (income)']['actual']:,} CZK", summary)
+
+    def test_no_result_line(self):
+        # Sales minus expenses is not shown; sales appear only as a side note.
+        self.assertNotIn("result", self.report.lower())
+        self.assertNotIn("result_czk", json.dumps(self.analysis))
+
+    def test_under_budget_categories_are_flagged(self):
+        # Software is -29.8% against budget (answer key -30 %): more than 20% under.
+        under = self.analysis["unusual_items"]["categories_under_budget"]
+        self.assertEqual([item["category"] for item in under], ["Software"])
+        self.assertIn("- **Software**: actual 12,630 vs budget 18,000 (-5,370, -29.8%). "
+                      "Note: may indicate missing or late costs.", self.report)
+
+    def test_missing_amounts_show_likely_category(self):
+        likely = {item["source_line"]: item["likely_category"]
+                  for item in self.analysis["exceptions"]["missing_amounts"]}
+        self.assertEqual(likely, {8: "Software", 33: "Other", 41: "Travel"})
+        self.assertIn("| 8 | 2026-09-03 | Figma Professional | Figma Inc. | Software |", self.report)
+        self.assertIn("| 41 | 2026-09-19 | Taxi Berlin airport | Berlin Taxi | Travel |", self.report)
+        # The understated categories are marked in the budget table, with a footnote.
+        self.assertIn("| Software * | 12,630 |", self.report)
+        self.assertIn("Actual understated – amount still missing for: Software (line 8); "
+                      "Other (line 33); Travel (line 41)", self.report)
 
     def test_invented_number_was_rejected_and_logged(self):
         self.assertIn("Report NOT saved", self.log_text)

@@ -90,10 +90,16 @@ ledgermind/
 - Stage 1 (Setup and data) – done
 - Stage 2 (Agent engine) – done
 - Stage 3 (Bookkeeping department) – done
-- Current stage: 4 (Reporting department) – built, waiting for Abanoub's go-ahead
+- Stage 4 (Reporting department) – done
+- Current stage: 5 (Manager) – built, waiting for Abanoub's go-ahead
 - Generated (not committed) in output/: transactions_clean.csv, exceptions.csv,
   transactions_categorized.csv, analysis_YYYY-MM.json (Analyst),
-  report_YYYY-MM.md (Writer)
+  draft_report_YYYY-MM.md (Writer), report_YYYY-MM.md (only after the
+  Manager's review passed), review_notes_YYYY-MM.md, escalation_YYYY-MM.md
+  (only if not delivered)
+- Manager review checks are in tools/review_checks.py (plain Python). The
+  Writer may be sent back at most MAX_REVISIONS (2) times, then the Manager
+  must escalate; both rules are enforced in tools/manager_tools.py.
 - Writer number check: save_report rejects text containing any number that
   is not in the Analyst's analysis file.
 - Test mode: without ANTHROPIC_API_KEY, agents use a scripted fake model

@@ -1,16 +1,20 @@
 """LedgerMind - starts the company.
 
-Stage 4: runs the Bookkeeping department (Collector, Categorizer) and then
-the Reporting department (Analyst, Writer), and prints the finished report.
-From Stage 5 the Manager will run the departments instead.
+The owner's request goes to the Manager. The Manager runs Bookkeeping and
+Reporting, reviews the report, and either delivers it or escalates.
 
 Without ANTHROPIC_API_KEY set, the agents run in test mode with a fake model.
 """
 
 import config
-from agents import analyst, categorizer, collector, writer
+from agents import manager
 from agents.action_log import ActionLog
 from agents.models import using_real_model
+
+
+def show(title, path):
+    print("\n" + "=" * 30 + f" {title} " + "=" * 30 + "\n")
+    print(path.read_text(encoding="utf-8"))
 
 
 def main():
@@ -20,20 +24,18 @@ def main():
         print("Mode: TEST - fake model, no API calls (ANTHROPIC_API_KEY is not set)\n")
 
     log = ActionLog()
+    the_manager = manager.create_manager(log)
+    answer = the_manager.run(manager.TASK)
 
-    # Bookkeeping department
-    collector.create_collector(log).run(collector.TASK)
-    categorizer.create_categorizer(log).run(categorizer.TASK)
+    out = config.OUTPUT_DIR
+    if the_manager.desk.finished == "delivered":
+        show("REPORT", out / config.REPORT_FILE_NAME)
+    elif the_manager.desk.finished == "escalated":
+        show("ESCALATION", out / config.ESCALATION_FILE_NAME)
+    show("REVIEW NOTES", out / config.REVIEW_NOTES_FILE_NAME)
 
-    # Reporting department
-    analyst.create_analyst(log).run(analyst.TASK)
-    writer.create_writer(log).run(writer.TASK)
-
-    report_path = config.OUTPUT_DIR / config.REPORT_FILE_NAME
-    print("\n" + "=" * 80 + "\n")
-    print(report_path.read_text(encoding="utf-8"))
-    print("=" * 80)
-    print(f"Report: {report_path}")
+    print("=" * 70)
+    print(f"Manager: {answer}")
     print(f"Full log: {log.path}")
 
 
