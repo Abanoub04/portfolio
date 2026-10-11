@@ -11,13 +11,18 @@ number that is not there (a rounded, calculated or invented one), the
 report is NOT saved and the AI is told which number is wrong.
 """
 
+import hashlib
 import json
 import re
-from datetime import datetime
 from decimal import Decimal
 from pathlib import Path
 
 import config
+from tools.csv_helpers import read_csv
+from tools.excel_report import build_workbook
+from tools.report_content import build_content, month_name, render_markdown
+from tools.slides_report import build_presentation
+from tools.word_report import build_document
 
 # A number like 42,000 or 68.0 or 17 (thousands separated by commas).
 NUMBER_PATTERN = re.compile(r"\d+(?:,\d{3})*(?:\.\d+)?")
@@ -72,173 +77,62 @@ class ReportWriter:
                              "copy numbers exactly from read_analysis, never calculate or round: "
                              + "; ".join(problems))
 
-        report = self.build_report(summary.strip(), unusual_items_comment.strip(), exceptions_comment.strip())
+        texts = {name: text.strip() for name, text in texts.items()}
+        report = self.build_report(**texts)
         # Saved as a draft: only the Manager publishes the final report, after review.
         path = self.output_dir / config.DRAFT_REPORT_FILE_NAME
         path.write_text(report, encoding="utf-8")
+        # The text parts are kept too: the Word, Excel and PowerPoint files are
+        # built from exactly this text and the analysis.
+        (self.output_dir / config.DRAFT_TEXTS_FILE_NAME).write_text(
+            json.dumps(texts, indent=2, ensure_ascii=False), encoding="utf-8")
+        # Files built from an earlier version of the text are now out of date.
+        for name in list(config.DRAFT_DELIVERABLES.values()) + [config.DELIVERABLES_MANIFEST_FILE_NAME]:
+            (self.output_dir / name).unlink(missing_ok=True)
         return {"file": path.name, "lines": report.count("\n") + 1, "number_check": "all numbers come from the analysis"}
+
+    def create_deliverables(self):
+        """Build the Excel, Word and PowerPoint files from the analysis and the
+        saved draft text. Python writes every number; nothing is typed by the AI."""
+        texts_path = self.output_dir / config.DRAFT_TEXTS_FILE_NAME
+        if not texts_path.exists():
+            raise RuntimeError("Save the report first (save_report); the files are built from its text")
+        analysis = json.loads((self.output_dir / config.ANALYSIS_FILE_NAME).read_text(encoding="utf-8"))
+        texts = json.loads(texts_path.read_text(encoding="utf-8"))
+        categorized = read_csv(self.output_dir / config.CATEGORIZED_FILE_NAME)
+        exceptions = read_csv(self.output_dir / config.EXCEPTIONS_FILE_NAME)
+        label = month_name(analysis)
+
+        files = {kind: self.output_dir / name for kind, name in config.DRAFT_DELIVERABLES.items()}
+        build_workbook(analysis, categorized, exceptions, files["xlsx"], label)
+        build_document(build_content(analysis, texts), files["docx"])
+        build_presentation(analysis, texts, files["pptx"], label)
+
+        # A fingerprint of what the files were built from, so the Manager can
+        # tell if the text or the analysis changed afterwards.
+        manifest = {"source": deliverables_source_hash(self.output_dir),
+                    "files": {kind: path.name for kind, path in files.items()}}
+        (self.output_dir / config.DELIVERABLES_MANIFEST_FILE_NAME).write_text(
+            json.dumps(manifest, indent=2), encoding="utf-8")
+        return {"files": [path.name for path in files.values()],
+                "note": "Built by Python from the analysis and the saved text"}
 
     # --- building the report ----------------------------------------------
 
     def build_report(self, summary, unusual_items_comment, exceptions_comment):
-        a = self.analysis
-        month_name = self.month_name()
-        lines = [
-            f"# Monthly expense report – {month_name}",
-            "",
-            f"All amounts in {a['currency']}. Prepared by LedgerMind.",
-            "",
-            "## Summary",
-            "",
-            summary,
-            "",
-        ]
-        lines += self.budget_section()
-        lines += self.unusual_section(unusual_items_comment)
-        lines += self.exceptions_section(exceptions_comment)
-        return "\n".join(lines).rstrip() + "\n"
+        texts = {"summary": summary, "unusual_items_comment": unusual_items_comment,
+                 "exceptions_comment": exceptions_comment}
+        return render_markdown(build_content(self.analysis, texts))
 
-    def budget_section(self):
-        budget = self.analysis["budget_vs_actual"]
-        totals = self.analysis["totals"]
-        understated = self.analysis["exceptions"]["understated_categories"]
-        lines = [
-            "## Budget vs actual",
-            "",
-            "| Category | Actual | Budget | Variance | Variance % |",
-            "|---|---:|---:|---:|---:|",
-        ]
-        for row in budget["categories"]:
-            # A * marks categories whose actual is understated (amounts still missing).
-            name = row["category"] + (" *" if row["category"] in understated else "")
-            lines.append(f"| {name} | {row['actual_czk']} | {row['budget_czk']} | "
-                         f"{row['variance_czk']} | {row['variance_percent']} |")
-        total = budget["total"]
-        lines.append(f"| **{total['category']}** | **{total['actual_czk']}** | **{total['budget_czk']}** | "
-                     f"**{total['variance_czk']}** | **{total['variance_percent']}** |")
-        lines.append("")
-        if understated:
-            parts = [f"{category} (line {', '.join(str(n) for n in found)})"
-                     for category, found in understated.items()]
-            lines += [f"\\* Actual understated – amount still missing for: {'; '.join(parts)}. "
-                      f"See Exceptions.", ""]
-        lines += [
-            f"{budget['note']}.",
-            "",
-            f"Side note: sales income for the month was {totals['sales_income_czk']} "
-            f"({totals['sales_transactions']} transactions).",
-            "",
-        ]
-        return lines
 
-    def unusual_section(self, comment):
-        unusual = self.analysis["unusual_items"]
-        lines = ["## Unusual items", ""]
-
-        lines.append(f"**Categories more than {unusual['over_budget_threshold']} over budget**")
-        lines.append("")
-        if unusual["categories_over_budget"]:
-            for item in unusual["categories_over_budget"]:
-                largest = ", ".join(f"{x['description']} {x['amount_czk']}" for x in item.get("largest_items", []))
-                lines.append(f"- **{item['category']}**: actual {item['actual_czk']} vs budget {item['budget_czk']} "
-                             f"({item['variance_czk']}, {item['variance_percent']}). Largest items: {largest}.")
-        else:
-            lines.append("- None.")
-        lines.append("")
-
-        lines.append(f"**Categories more than {unusual['over_budget_threshold']} under budget**")
-        lines.append("")
-        if unusual["categories_under_budget"]:
-            for item in unusual["categories_under_budget"]:
-                lines.append(f"- **{item['category']}**: actual {item['actual_czk']} vs budget {item['budget_czk']} "
-                             f"({item['variance_czk']}, {item['variance_percent']}). "
-                             f"Note: {item['note']}.")
-        else:
-            lines.append("- None.")
-        lines.append("")
-
-        excluded = " and ".join(unusual["large_transactions_excluding"])
-        lines.append(f"**Single expenses above {unusual['large_transaction_threshold_czk']} "
-                     f"(excluding {excluded})**")
-        lines.append("")
-        if unusual["large_transactions"]:
-            for item in unusual["large_transactions"]:
-                lines.append(f"- Line {item['source_line']}, {item['date']}: {item['description']} "
-                             f"({item['category']}) – {item['amount_czk']}")
-        else:
-            lines.append("- None.")
-        lines.append("")
-
-        if comment:
-            lines += [comment, ""]
-        return lines
-
-    def exceptions_section(self, comment):
-        exceptions = self.analysis["exceptions"]
-        lines = ["## Exceptions", ""]
-
-        lines.append(f"**Probable duplicates – confirm against the bank statement** "
-                     f"({exceptions['probable_duplicates_count']}, total {exceptions['probable_duplicates_total_czk']}) – "
-                     f"identical to an earlier row, so excluded from all totals above; if a row turns out "
-                     f"to be a real separate charge, its amount must be added back")
-        lines.append("")
-        lines += self.table(["Line", "Date", "Description", "Amount", "Note"],
-                            [[x["source_line"], x["date"], x["description"], x["amount_czk"], x["detail"]]
-                             for x in exceptions["probable_duplicates"]])
-
-        lines.append(f"**Possible duplicates – confirm against the bank statement** "
-                     f"({exceptions['possible_duplicates_count']}, total {exceptions['possible_duplicates_total_czk']}) – "
-                     f"same counterparty and amount as an earlier row within {exceptions['duplicate_window_days']} days, "
-                     f"but worded differently; excluded from all totals above until confirmed")
-        lines.append("")
-        lines += self.table(["Line", "Date", "Description", "Amount", "Note"],
-                            [[x["source_line"], x["date"], x["description"], x["amount_czk"], x["detail"]]
-                             for x in exceptions["possible_duplicates"]])
-
-        lines.append(f"**Outside the period** ({exceptions['outside_the_period_count']}) – dated outside "
-                     f"{self.month_name()}, so not included in this month's totals; book them in their own month")
-        lines.append("")
-        lines += self.table(["Line", "Date", "Description", "Amount", "Note"],
-                            [[x["source_line"], x["date"], x["description"], x["amount_czk"], x["detail"]]
-                             for x in exceptions["outside_the_period"]])
-
-        lines.append(f"**Missing amounts to follow up** ({exceptions['missing_amounts_count']}) – "
-                     f"not included in the totals until the amount is known, so the actual "
-                     f"of the likely category is understated")
-        lines.append("")
-        lines += self.table(["Line", "Date", "Description", "Counterparty", "Likely category"],
-                            [[x["source_line"], x["date"], x["description"], x["counterparty"],
-                              x["likely_category"]]
-                             for x in exceptions["missing_amounts"]])
-
-        lines.append(f"**Items needing review** ({exceptions['needs_review_count']}) – "
-                     f"included in the totals, category to be confirmed (a refund reduces its category)")
-        lines.append("")
-        lines += self.table(["Line", "Date", "Description", "Category", "Amount", "To check"],
-                            [[x["source_line"], x["date"], x["description"], x["category"],
-                              x["amount_czk"], x["review_reason"]]
-                             for x in exceptions["needs_review"]])
-
-        if exceptions["other_issues"]:
-            lines.append(f"**Other data issues** ({len(exceptions['other_issues'])})")
-            lines.append("")
-            lines += self.table(["Line", "Issue", "Detail"],
-                                [[x["source_line"], x["issue"], x["detail"]] for x in exceptions["other_issues"]])
-
-        if comment:
-            lines += [comment, ""]
-        return lines
-
-    def month_name(self):
-        return datetime.strptime(self.analysis["report_month"], "%Y-%m").strftime("%B %Y")
-
-    def table(self, headers, rows):
-        if not rows:
-            return ["None.", ""]
-        lines = ["| " + " | ".join(headers) + " |", "|" + "---|" * len(headers)]
-        for row in rows:
-            lines.append("| " + " | ".join(str(cell) for cell in row) + " |")
-        return lines + [""]
+def deliverables_source_hash(output_dir):
+    """Fingerprint of the inputs of the deliverable files: analysis, draft text and data."""
+    digest = hashlib.sha256()
+    for name in [config.ANALYSIS_FILE_NAME, config.DRAFT_TEXTS_FILE_NAME,
+                 config.CATEGORIZED_FILE_NAME, config.EXCEPTIONS_FILE_NAME]:
+        path = Path(output_dir) / name
+        digest.update(path.read_bytes() if path.exists() else b"-")
+    return digest.hexdigest()
 
 
 def make_writer_tools(writer):
@@ -268,5 +162,13 @@ def make_writer_tools(writer):
                 "required": ["summary", "unusual_items_comment"],
             },
             "function": writer.save_report,
+        },
+        {
+            "name": "create_deliverables",
+            "description": "After save_report: build the client files (Excel, Word, PowerPoint) from the "
+                           "analysis and the saved text. Python writes every number. Call it again after "
+                           "every save_report.",
+            "input_schema": {"type": "object", "properties": {}},
+            "function": writer.create_deliverables,
         },
     ]

@@ -1,0 +1,169 @@
+"""The Excel deliverable: report_YYYY-MM.xlsx.
+
+Sheets:
+  Summary       budget vs actual per category. Actual and budget are the
+                Analyst's figures; variance and variance % are Excel
+                formulas, so the client can see how they are calculated.
+  Transactions  every categorized row, with its review flag and reason
+  Exceptions    every row set aside (duplicates, outside the period,
+                missing amounts, other issues)
+
+Everything is written by Python from the Analyst's results and the
+categorized data - the AI never types a number into this file.
+"""
+
+from datetime import date
+from decimal import Decimal
+
+from openpyxl import Workbook
+from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+from openpyxl.utils import get_column_letter
+
+FONT = "Arial"
+CZK = '#,##0 "CZK";-#,##0 "CZK";"-"'
+CZK_SIGNED = '+#,##0 "CZK";-#,##0 "CZK";"-"'
+PERCENT_SIGNED = '+0.0%;-0.0%;0.0%'
+DATE = "yyyy-mm-dd"
+
+HEADER_FONT = Font(name=FONT, bold=True, color="FFFFFF")
+HEADER_FILL = PatternFill("solid", fgColor="1D3352")
+BODY_FONT = Font(name=FONT)
+INPUT_FONT = Font(name=FONT, color="0000FF")          # blue: figures from the Analyst
+BOLD_FONT = Font(name=FONT, bold=True)
+NOTE_FONT = Font(name=FONT, italic=True, color="555555")
+TOTAL_BORDER = Border(top=Side(style="thin"), bottom=Side(style="double"))
+
+SUMMARY_HEADERS = ["Category", "Actual (CZK)", "Budget (CZK)", "Variance (CZK)", "Variance %"]
+TRANSACTION_HEADERS = ["Line", "Date", "Description", "Counterparty", "Amount (CZK)", "Category",
+                       "Method", "Reason", "Needs review", "Review reason"]
+EXCEPTION_HEADERS = ["Line", "Date", "Description", "Counterparty", "Amount (CZK)", "Issue", "Detail"]
+
+
+def money(text):
+    """'42,000' or '+10,546' -> Decimal."""
+    return Decimal(text.replace(",", "").replace("+", ""))
+
+
+def as_number(amount):
+    """Decimal -> int when whole (clean in Excel), else float."""
+    return int(amount) if amount == amount.to_integral_value() else float(amount)
+
+
+def as_date(text):
+    try:
+        return date.fromisoformat(text)
+    except ValueError:
+        return text   # an unreadable date stays as it was
+
+
+def variance_formula(row):
+    return f"=B{row}-C{row}"
+
+
+def percent_formula(row):
+    return f'=IF(C{row}=0,"",D{row}/C{row})'
+
+
+def write_header(sheet, headers):
+    for column, title in enumerate(headers, start=1):
+        cell = sheet.cell(row=1, column=column, value=title)
+        cell.font = HEADER_FONT
+        cell.fill = HEADER_FILL
+        cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    sheet.freeze_panes = "A2"   # the header row stays visible when scrolling
+
+
+def set_widths(sheet, minimum=8, maximum=55):
+    """Column width from the longest value in each column."""
+    for column_cells in sheet.columns:
+        longest = max((len(str(cell.value)) for cell in column_cells if cell.value is not None), default=0)
+        letter = get_column_letter(column_cells[0].column)
+        sheet.column_dimensions[letter].width = max(minimum, min(maximum, longest + 3))
+
+
+def build_workbook(analysis, categorized_rows, exception_rows, path, month_label):
+    workbook = Workbook()
+    summary = workbook.active
+    summary.title = "Summary"
+    write_summary(summary, analysis, month_label)
+    write_transactions(workbook.create_sheet("Transactions"), categorized_rows)
+    write_exceptions(workbook.create_sheet("Exceptions"), exception_rows)
+    workbook.save(path)
+
+
+def write_summary(sheet, analysis, month_label):
+    write_header(sheet, SUMMARY_HEADERS)
+    categories = analysis["budget_vs_actual"]["categories"]
+    first = 2
+    last = first + len(categories) - 1
+
+    for row, item in enumerate(categories, start=first):
+        sheet.cell(row=row, column=1, value=item["category"]).font = BODY_FONT
+        for column, key in [(2, "actual_czk"), (3, "budget_czk")]:
+            cell = sheet.cell(row=row, column=column, value=as_number(money(item[key])))
+            cell.font, cell.number_format = INPUT_FONT, CZK
+        cell = sheet.cell(row=row, column=4, value=variance_formula(row))
+        cell.font, cell.number_format = BODY_FONT, CZK_SIGNED
+        cell = sheet.cell(row=row, column=5, value=percent_formula(row))
+        cell.font, cell.number_format = BODY_FONT, PERCENT_SIGNED
+
+    total = last + 1
+    sheet.cell(row=total, column=1, value="Total expenses")
+    sheet.cell(row=total, column=2, value=f"=SUM(B{first}:B{last})").number_format = CZK
+    sheet.cell(row=total, column=3, value=f"=SUM(C{first}:C{last})").number_format = CZK
+    sheet.cell(row=total, column=4, value=variance_formula(total)).number_format = CZK_SIGNED
+    sheet.cell(row=total, column=5, value=percent_formula(total)).number_format = PERCENT_SIGNED
+    for column in range(1, 6):
+        sheet.cell(row=total, column=column).font = BOLD_FONT
+        sheet.cell(row=total, column=column).border = TOTAL_BORDER
+
+    sales_row = total + 2
+    sheet.cell(row=sales_row, column=1, value="Sales income (side note)").font = BODY_FONT
+    cell = sheet.cell(row=sales_row, column=2, value=as_number(money(analysis["totals"]["sales_income_czk"])))
+    cell.font, cell.number_format = INPUT_FONT, CZK
+
+    notes = [f"{month_label}. Variance = Actual - Budget; + means over budget. Variance % = Variance / Budget.",
+             "Blue figures come from the Analyst's results; black cells are Excel formulas."]
+    understated = analysis["exceptions"]["understated_categories"]
+    if understated:
+        parts = "; ".join(f"{category} (line {', '.join(str(n) for n in lines)})"
+                          for category, lines in understated.items())
+        notes.append(f"Actual understated - amount still missing for: {parts}. See the Exceptions sheet.")
+    for offset, note in enumerate(notes, start=2):
+        sheet.cell(row=sales_row + offset, column=1, value=note).font = NOTE_FONT
+
+    sheet.column_dimensions["A"].width = 26
+    for letter in "BCDE":
+        sheet.column_dimensions[letter].width = 18
+
+
+def write_transactions(sheet, rows):
+    write_header(sheet, TRANSACTION_HEADERS)
+    for index, row in enumerate(rows, start=2):
+        values = [int(row["source_line"]), as_date(row["date"]), row["description"], row["counterparty"],
+                  as_number(Decimal(row["amount_czk"])), row["category"], row["method"], row["reason"],
+                  row.get("needs_review", "no"), row.get("review_reason", "")]
+        for column, value in enumerate(values, start=1):
+            cell = sheet.cell(row=index, column=column, value=value)
+            cell.font = BODY_FONT
+        sheet.cell(row=index, column=2).number_format = DATE
+        sheet.cell(row=index, column=5).number_format = CZK
+    sheet.auto_filter.ref = f"A1:{get_column_letter(len(TRANSACTION_HEADERS))}{max(2, len(rows) + 1)}"
+    set_widths(sheet)
+
+
+def write_exceptions(sheet, rows):
+    write_header(sheet, EXCEPTION_HEADERS)
+    for index, row in enumerate(rows, start=2):
+        amount = as_number(Decimal(row["amount_czk"])) if row["amount_czk"].strip() else None
+        values = [int(row["source_line"]), as_date(row["date"]), row["description"], row["counterparty"],
+                  amount, row["issue"], row["detail"]]
+        for column, value in enumerate(values, start=1):
+            sheet.cell(row=index, column=column, value=value).font = BODY_FONT
+        sheet.cell(row=index, column=2).number_format = DATE
+        sheet.cell(row=index, column=5).number_format = CZK
+    if rows:
+        sheet.auto_filter.ref = f"A1:{get_column_letter(len(EXCEPTION_HEADERS))}{len(rows) + 1}"
+    else:
+        sheet.cell(row=2, column=1, value="No rows were set aside this month.").font = NOTE_FONT
+    set_widths(sheet)

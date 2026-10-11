@@ -21,6 +21,11 @@ c) Claims
    categories the sentence talks about, and contain the names it uses
    (places, events, suppliers).
 
+d) Deliverables (Excel, Word, PowerPoint)
+   The files exist and were built from the current analysis and text; then
+   each file is opened and its numbers are read back and compared with the
+   Analyst's results (tools/deliverable_checks.py).
+
 Each problem is returned as an issue with an owner:
    "writer" -> the report must be rewritten (sent back to the Writer)
    "data"   -> the data doesn't reconcile or fails a data-quality rule
@@ -35,6 +40,8 @@ from pathlib import Path
 import config
 from tools.csv_helpers import read_csv
 from tools.data_rules import in_report_month, is_supplier_row, possible_duplicate_pairs
+from tools.deliverable_checks import check_excel, check_slides, check_word
+from tools.writer_tools import deliverables_source_hash
 from tools.writer_tools import numbers_in
 
 # Words that state a cause. One extra word may sit in between, so that
@@ -116,6 +123,7 @@ class ReportReview:
         self.check_report_numbers()
         self.check_percentages()
         self.check_claims()
+        self.check_deliverables()
 
         return {
             "passed": all(check["passed"] for check in self.checks),
@@ -294,6 +302,38 @@ class ReportReview:
                                           f"{percent_of[current]}% (in: \"{sentence}\")")
         self.record("Percentages belong to the right category", not issues,
                     f"{checked} percentages checked" if not issues else "; ".join(issues), "writer", issues)
+
+    # --- d) deliverables --------------------------------------------------
+
+    def check_deliverables(self):
+        files = {kind: self.output_dir / name for kind, name in config.DRAFT_DELIVERABLES.items()}
+        manifest = self.output_dir / config.DELIVERABLES_MANIFEST_FILE_NAME
+        missing = [path.name for path in files.values() if not path.exists()]
+        problems = []
+        if missing or not manifest.exists():
+            problems.append(f"Deliverable files missing ({', '.join(missing) or manifest.name}) - "
+                            f"the Writer must run create_deliverables")
+        elif json.loads(manifest.read_text(encoding="utf-8"))["source"] != deliverables_source_hash(self.output_dir):
+            problems.append("Deliverable files are out of date (the analysis or text changed after they were "
+                            "built) - the Writer must run create_deliverables again")
+        self.record("Deliverables are present and up to date", not problems,
+                    f"{', '.join(path.name for path in files.values())} built from the current analysis and text",
+                    "writer", problems)
+        if problems:
+            self.record("Deliverables match the Analyst's results", False, "", "writer",
+                        ["Not checked yet: the deliverable files are missing or out of date"])
+            return
+
+        texts = json.loads((self.output_dir / config.DRAFT_TEXTS_FILE_NAME).read_text(encoding="utf-8"))
+        allowed = set(numbers_in(json.dumps(self.analysis, ensure_ascii=False)))
+        mismatches = (check_excel(files["xlsx"], self.analysis, self.categorized, self.exceptions)
+                      + check_word(files["docx"], self.analysis, self.exceptions, texts, allowed)
+                      + check_slides(files["pptx"], self.analysis, allowed))
+        # A wrong number in a generated file can't be fixed by rewriting the
+        # text, so it is a data issue: the Manager must not deliver, and escalates.
+        self.record("Deliverables match the Analyst's results", not mismatches,
+                    "Excel, Word and PowerPoint read back: every number matches the Analyst's results",
+                    "data", mismatches)
 
     # --- b) claims --------------------------------------------------------
 

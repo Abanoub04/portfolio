@@ -33,8 +33,10 @@ class ManagerDesk:
 
         # Start clean: remove the Manager's files from an earlier run, so an
         # old report can never be mistaken for this run's result.
-        for name in [config.DRAFT_REPORT_FILE_NAME, config.REPORT_FILE_NAME,
-                     config.REVIEW_NOTES_FILE_NAME, config.ESCALATION_FILE_NAME]:
+        for name in ([config.DRAFT_REPORT_FILE_NAME, config.REPORT_FILE_NAME, config.REVIEW_NOTES_FILE_NAME,
+                      config.ESCALATION_FILE_NAME, config.DRAFT_TEXTS_FILE_NAME,
+                      config.DELIVERABLES_MANIFEST_FILE_NAME]
+                     + list(config.DRAFT_DELIVERABLES.values()) + list(config.REPORT_DELIVERABLES.values())):
             (self.output_dir / name).unlink(missing_ok=True)
 
     # --- helpers ----------------------------------------------------------
@@ -43,11 +45,16 @@ class ManagerDesk:
         return self.output_dir / name
 
     def draft_hash(self):
-        """A fingerprint of the draft, to know if it changed after the review."""
+        """A fingerprint of the draft report and its Excel, Word and PowerPoint
+        files, to know if anything changed after the review."""
         draft = self.path(config.DRAFT_REPORT_FILE_NAME)
         if not draft.exists():
             return None
-        return hashlib.sha256(draft.read_bytes()).hexdigest()
+        digest = hashlib.sha256(draft.read_bytes())
+        for name in config.DRAFT_DELIVERABLES.values():
+            path = self.path(name)
+            digest.update(path.read_bytes() if path.exists() else b"-")
+        return digest.hexdigest()
 
     def add_to_review_notes(self, text):
         notes = self.path(config.REVIEW_NOTES_FILE_NAME)
@@ -131,9 +138,12 @@ class ManagerDesk:
             raise RuntimeError("Cannot deliver: the draft changed after the review - review it again")
 
         shutil.copyfile(self.path(config.DRAFT_REPORT_FILE_NAME), self.path(config.REPORT_FILE_NAME))
+        for kind, name in config.DRAFT_DELIVERABLES.items():
+            shutil.copyfile(self.path(name), self.path(config.REPORT_DELIVERABLES[kind]))
         self.add_to_review_notes(f"## Delivered\n\n{note.strip()}")
         self.finished = "delivered"
-        return {"delivered": config.REPORT_FILE_NAME, "review_notes": config.REVIEW_NOTES_FILE_NAME}
+        return {"delivered": [config.REPORT_FILE_NAME] + list(config.REPORT_DELIVERABLES.values()),
+                "review_notes": config.REVIEW_NOTES_FILE_NAME}
 
     def escalate_to_owner(self, summary, issues):
         """Stop without delivering, and tell the owner what is wrong."""

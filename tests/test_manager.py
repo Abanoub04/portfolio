@@ -35,6 +35,7 @@ BAD_WRITER_SCRIPT = [
         "summary": WRONG_NUMBER_SUMMARY,
         "unusual_items_comment": UNUSUAL_REVISED + WRONG_CLAIM,
         "exceptions_comment": EXCEPTIONS}},
+    {"tool": "create_deliverables"},
     {"text": "Saved."},
 ]
 
