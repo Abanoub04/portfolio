@@ -13,9 +13,7 @@ import shutil
 from pathlib import Path
 
 import config
-from agents.analyst import TASK as ANALYST_TASK, create_analyst
-from agents.categorizer import TASK as CATEGORIZER_TASK, create_categorizer
-from agents.collector import TASK as COLLECTOR_TASK, create_collector
+from agents import analyst, categorizer, collector
 from agents.writer import create_writer, writer_task
 from tools.review_checks import ReportReview, format_review
 
@@ -65,17 +63,17 @@ class ManagerDesk:
 
     def ask_collector(self):
         self.require_not_finished()
-        answer = create_collector(self.log, output_dir=self.output_dir).run(COLLECTOR_TASK)
+        answer = collector.create_collector(self.log, output_dir=self.output_dir).run(collector.task())
         return {"agent": "Collector", "answer": answer}
 
     def ask_categorizer(self):
         self.require_not_finished()
-        answer = create_categorizer(self.log, output_dir=self.output_dir).run(CATEGORIZER_TASK)
+        answer = categorizer.create_categorizer(self.log, output_dir=self.output_dir).run(categorizer.task())
         return {"agent": "Categorizer", "answer": answer}
 
     def ask_analyst(self):
         self.require_not_finished()
-        answer = create_analyst(self.log, output_dir=self.output_dir).run(ANALYST_TASK)
+        answer = analyst.create_analyst(self.log, output_dir=self.output_dir).run(analyst.task())
         return {"agent": "Analyst", "answer": answer}
 
     def ask_writer(self, feedback=""):

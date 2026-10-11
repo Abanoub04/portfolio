@@ -75,9 +75,9 @@ class AiChoosesDifferentlyTests(RunCheckTestCase):
         details = [s["detail"] for s in self.differences(self.result)]
         self.assertIn("line 43 Card payment 8812 - ALZA.CZ: AI chose Software, answer key says Other "
                       "(reason: Electronics retailer - treated as IT costs)", details)
-        self.assertIn("Software 17,020 vs answer key 12,630 (difference +4,390, caused by the AI decisions above)",
+        self.assertIn("Software 17,020 vs answer key 12,630 (difference +4,390; see the cleaning and AI decisions above)",
                       details)
-        self.assertIn("Other 18,742 vs answer key 23,132 (difference -4,390, caused by the AI decisions above)",
+        self.assertIn("Other 18,742 vs answer key 23,132 (difference -4,390; see the cleaning and AI decisions above)",
                       details)
         # Software is no longer more than 20% under budget (17,020 vs 18,000).
         self.assertIn("flagged none; answer key ['Software']", details)

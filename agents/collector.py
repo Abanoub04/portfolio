@@ -1,5 +1,6 @@
 """The Collector (Bookkeeping department): turns the raw file into clean data."""
 
+import config
 from agents.base_agent import Agent
 from tools.collector_tools import TransactionCleaner, make_collector_tools
 
@@ -12,7 +13,7 @@ Steps:
 1. Load the transactions.
 2. Standardize all dates to YYYY-MM-DD.
 3. Set aside rows with missing or invalid amounts. Never guess an amount.
-4. Remove duplicates (needs steps 2 and 3 first).
+4. Set aside probable duplicates (needs steps 2 and 3 first).
 5. Save the cleaned data. Saving checks that every row is either clean or an exception.
 
 If a tool returns an error, read it, fix the cause and continue.
@@ -31,7 +32,9 @@ FAKE_SCRIPT = [
     {"text": "(test mode) Cleaning finished - see save_cleaned_data in the log for the counts."},
 ]
 
-TASK = "Clean the September 2026 transactions file."
+
+def task():
+    return f"Clean the {config.month_name()} transactions file."
 
 
 def create_collector(log, output_dir=None, source_file=None):

@@ -1,5 +1,6 @@
 """The Analyst (Reporting department): turns the categorized data into numbers."""
 
+import config
 from agents.base_agent import Agent
 from tools.analyst_tools import ReportAnalyst, make_analyst_tools
 
@@ -14,7 +15,7 @@ Steps:
 2. Calculate the totals per category.
 3. Compare actual spend with budget.
 4. Find unusual items.
-5. Summarize the exceptions (duplicates, missing amounts, items needing review).
+5. Summarize the exceptions (probable duplicates, missing amounts, items needing review).
 6. Save the analysis - it is the Writer's only source of numbers.
 
 If a tool returns an error, read it, fix the cause and continue.
@@ -32,7 +33,9 @@ FAKE_SCRIPT = [
     {"text": "(test mode) Analysis saved - see the tool results in the log."},
 ]
 
-TASK = "Analyse the categorized September 2026 transactions against the budget."
+
+def task():
+    return f"Analyse the categorized {config.month_name()} transactions against the budget."
 
 
 def create_analyst(log, output_dir=None):

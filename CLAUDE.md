@@ -92,16 +92,27 @@ ledgermind/
 - Stage 3 (Bookkeeping department) – done
 - Stage 4 (Reporting department) – done
 - Stage 5 (Manager) – done
-- Current stage: 6 (Full run) – prepared, NOT yet run with a real key;
-  waiting for Abanoub to run it on his computer (steps in README.md)
+- Stage 6 (Full run) – done: first real run on Abanoub's computer passed all
+  hard checks, delivered first time, cost about $0.34
+- Current: follow-ups after the real run – built, waiting for Abanoub's go-ahead
+  - identical rows are labelled "probable duplicates – confirm against the
+    bank statement" (still excluded from totals)
+  - `python main.py --test` forces test mode; `--month YYYY-MM` picks a month
+    (config.set_month: all file names contain the month)
+  - second test month October 2026 (data/transactions_2026-10.csv, answer key
+    data/answer_key_2026-10.md). Known gaps, recorded as expectedFailure in
+    tests/test_october.py: reworded duplicates, rows from another month,
+    refunds (sign rule forces them into Sales)
+  - test mode for months other than September uses agents/simulated_ai.py
 - API key: ANTHROPIC_API_KEY from the environment or a .env file (config.py
   loads it; .env is gitignored; .env.example is the template). The test
   suite forces test mode (tests/__init__.py), so tests never call the API.
 - After each run main.py writes output/run_check_YYYY-MM.md: HARD checks
   (must pass, exit code 1 if not) and SOFT differences vs the answer key
   (tools/run_checks.py, answer key in tools/answer_key.py).
-- Generated (not committed) in output/: transactions_clean.csv, exceptions.csv,
-  transactions_categorized.csv, analysis_YYYY-MM.json (Analyst),
+- Generated (not committed) in output/, all named with the month:
+  transactions_clean_YYYY-MM.csv, exceptions_YYYY-MM.csv,
+  transactions_categorized_YYYY-MM.csv, analysis_YYYY-MM.json (Analyst),
   draft_report_YYYY-MM.md (Writer), report_YYYY-MM.md (only after the
   Manager's review passed), review_notes_YYYY-MM.md, escalation_YYYY-MM.md
   (only if not delivered)

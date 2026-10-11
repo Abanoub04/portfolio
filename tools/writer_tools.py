@@ -126,7 +126,7 @@ class ReportWriter:
             f"{budget['note']}.",
             "",
             f"Side note: sales income for the month was {totals['sales_income_czk']} "
-            f"({totals['sales_transactions']} invoices).",
+            f"({totals['sales_transactions']} transactions).",
             "",
         ]
         return lines
@@ -177,12 +177,14 @@ class ReportWriter:
         exceptions = self.analysis["exceptions"]
         lines = ["## Exceptions", ""]
 
-        lines.append(f"**Duplicates removed** ({exceptions['duplicates_count']}, "
-                     f"total {exceptions['duplicates_total_czk']}) – excluded from all totals above")
+        lines.append(f"**Probable duplicates – confirm against the bank statement** "
+                     f"({exceptions['probable_duplicates_count']}, total {exceptions['probable_duplicates_total_czk']}) – "
+                     f"identical to an earlier row, so excluded from all totals above; if a row turns out "
+                     f"to be a real separate charge, its amount must be added back")
         lines.append("")
         lines += self.table(["Line", "Date", "Description", "Amount", "Note"],
                             [[x["source_line"], x["date"], x["description"], x["amount_czk"], x["detail"]]
-                             for x in exceptions["duplicates_removed"]])
+                             for x in exceptions["probable_duplicates"]])
 
         lines.append(f"**Missing amounts to follow up** ({exceptions['missing_amounts_count']}) – "
                      f"not included in the totals until the amount is known, so the actual "

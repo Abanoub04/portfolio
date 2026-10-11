@@ -156,7 +156,11 @@ class TransactionCleaner:
 
     def remove_duplicates(self):
         """Set aside rows that repeat an earlier row (same date, description,
-        counterparty and amount). The first occurrence stays in the clean data."""
+        counterparty and amount). The first occurrence stays in the clean data.
+
+        They are only PROBABLE duplicates: two identical rows can also be two
+        real charges (e.g. two hotel rooms). They are excluded from the totals,
+        but listed so a person can confirm them against the bank statement."""
         # Dates must be in one format first, otherwise "03.09.2026" and
         # "2026-09-03" look different and a duplicate would be missed.
         # The same goes for amounts: "-1840" and "-1840.00" must compare equal.
@@ -172,7 +176,8 @@ class TransactionCleaner:
             key = (row["date"], row["description"].strip(), row["counterparty"].strip(), row["amount_czk"].strip())
             if key in first_seen:
                 original_line = first_seen[key]
-                self.set_aside(row, "duplicate", f"Same as line {original_line}")
+                self.set_aside(row, "probable duplicate",
+                               f"Identical to line {original_line} - confirm against the bank statement")
                 duplicates.append({
                     "source_line": row["source_line"],
                     "duplicate_of_line": original_line,
@@ -185,7 +190,7 @@ class TransactionCleaner:
 
         self.rows = kept_rows
         self.done["duplicates"] = True
-        return {"duplicates_set_aside": duplicates, "rows_remaining": len(kept_rows)}
+        return {"probable_duplicates_set_aside": duplicates, "rows_remaining": len(kept_rows)}
 
     def save_cleaned_data(self):
         """Write the clean data and the exceptions list, after checking that
@@ -254,7 +259,8 @@ def make_collector_tools(cleaner):
         {
             "name": "remove_duplicates",
             "description": "Move repeated rows (same date, description, counterparty and amount) to the "
-                           "exceptions list, keeping the first occurrence. Needs standardized dates.",
+                           "exceptions list as probable duplicates, keeping the first occurrence. "
+                           "Needs standardized dates.",
             "input_schema": no_inputs,
             "function": cleaner.remove_duplicates,
         },

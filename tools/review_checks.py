@@ -3,7 +3,7 @@
 All checks are plain Python, so they give the same answer every time.
 
 a) Reconciliation
-   1. Rows:   raw rows = clean rows + duplicates + missing amounts (+ other issues)
+   1. Rows:   raw rows = clean rows + probable duplicates + missing amounts (+ other issues)
    2. Totals: each category recalculated from the categorized data = the
               Analyst's figure; sum of categories = total expenses; total
               expenses and sales recalculated from the clean data agree.
@@ -30,9 +30,12 @@ import config
 from tools.csv_helpers import read_csv
 from tools.writer_tools import numbers_in
 
+# Words that state a cause. One extra word may sit in between, so that
+# "driven mainly by" or "linked directly to" are caught too.
 CAUSE_WORDS = re.compile(
-    r"\b(driven by|due to|because|caused by|linked to|related to|result of|explained by|"
-    r"owing to|attributable to|reflects|reflecting|thanks to)\b",
+    r"\b(driven (?:\w+ )?by|due (?:\w+ )?to|because|caused (?:\w+ )?by|linked (?:\w+ )?to|"
+    r"related (?:\w+ )?to|result of|explained (?:\w+ )?by|owing to|attributable to|reflects|"
+    r"reflecting|thanks to)\b",
     re.IGNORECASE,
 )
 CITATION = re.compile(r"\blines?\s+(\d+(?:\s*(?:,|and|&)\s*\d+)*)", re.IGNORECASE)
@@ -115,13 +118,13 @@ class ReportReview:
         counts = {}
         for row in self.exceptions:
             counts[row["issue"]] = counts.get(row["issue"], 0) + 1
-        duplicates = counts.pop("duplicate", 0)
+        duplicates = counts.pop("probable duplicate", 0)
         missing = counts.pop("missing amount", 0)
         other = sum(counts.values())
 
         raw, clean = len(self.raw_rows), len(self.clean)
         accounted = clean + duplicates + missing + other
-        detail = (f"{raw} raw rows = {clean} clean + {duplicates} duplicates + {missing} missing amounts"
+        detail = (f"{raw} raw rows = {clean} clean + {duplicates} probable duplicates + {missing} missing amounts"
                   + (f" + {other} other issues" if other else ""))
         issues = []
         if raw != accounted:

@@ -218,7 +218,7 @@ class ReportAnalyst:
         return {key: value for key, value in row.items() if not key.startswith("_")}
 
     def summarize_exceptions(self):
-        """Duplicates removed, missing amounts and rows needing review."""
+        """Probable duplicates, missing amounts and rows needing review."""
         self.require_loaded()
 
         duplicates = []
@@ -226,7 +226,7 @@ class ReportAnalyst:
         missing = []
         other_issues = []
         for row in self.exceptions:
-            if row["issue"] == "duplicate":
+            if row["issue"] == "probable duplicate":
                 amount = -Decimal(row["amount_czk"])
                 duplicates_total += amount
                 duplicates.append({"source_line": int(row["source_line"]), "date": row["date"],
@@ -260,9 +260,9 @@ class ReportAnalyst:
                 understated.setdefault(item["likely_category"], []).append(item["source_line"])
 
         self.results["exceptions"] = {
-            "duplicates_removed": duplicates,
-            "duplicates_count": len(duplicates),
-            "duplicates_total_czk": format_czk(duplicates_total),
+            "probable_duplicates": duplicates,
+            "probable_duplicates_count": len(duplicates),
+            "probable_duplicates_total_czk": format_czk(duplicates_total),
             "missing_amounts": missing,
             "missing_amounts_count": len(missing),
             "understated_categories": understated,
@@ -331,7 +331,7 @@ def make_analyst_tools(analyst):
         },
         {
             "name": "summarize_exceptions",
-            "description": "Summarize duplicates removed, missing amounts to follow up and rows needing review.",
+            "description": "Summarize probable duplicates, missing amounts to follow up and rows needing review.",
             "input_schema": no_inputs,
             "function": analyst.summarize_exceptions,
         },

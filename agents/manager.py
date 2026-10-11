@@ -6,6 +6,7 @@ or escalates to the owner.
 
 import config
 from agents.base_agent import Agent
+from agents.simulated_ai import ManagerPolicy
 from agents.writer import create_writer
 from tools.manager_tools import ManagerDesk, make_manager_tools
 
@@ -36,7 +37,7 @@ FAKE_FEEDBACK = (
     "it, or remove the claim."
 )
 FAKE_DELIVERY_NOTE = (
-    "Checked before delivery: rows reconcile (raw = clean + duplicates + missing amounts), "
+    "Checked before delivery: rows reconcile (raw = clean + probable duplicates + missing amounts), "
     "the sum of categories equals total expenses and matches the clean data, every number in "
     "the report matches the Analyst's results, and every stated cause is supported by cited "
     "transactions. One claim was sent back once for missing evidence and is now supported. "
@@ -56,7 +57,10 @@ FAKE_SCRIPT = [
              "revision; see the review notes for what was checked."},
 ]
 
-TASK = "Prepare the September 2026 report."
+
+def task():
+    return f"Prepare the {config.month_name()} report."
+
 
 # The Manager needs more rounds than the other agents (it runs the whole job).
 MAX_STEPS = 25
@@ -69,7 +73,8 @@ def create_manager(log, output_dir=None, writer_factory=create_writer, fake_scri
         instructions=INSTRUCTIONS,
         tools=make_manager_tools(desk),
         log=log,
-        fake_script=fake_script or FAKE_SCRIPT,
+        # September: the fixed demo script above. Other months: simulated AI.
+        fake_script=fake_script or (FAKE_SCRIPT if config.REPORT_MONTH == "2026-09" else ManagerPolicy()),
         max_steps=MAX_STEPS,
     )
     agent.desk = desk   # so tests and main.py can see what happened

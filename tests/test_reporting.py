@@ -116,6 +116,9 @@ class FullReportTests(unittest.TestCase):
 
         self.assertEqual(re.findall(r"^\| (\d+) \|", duplicates, re.M), ["16", "19", "22", "39"])
         self.assertIn("(4, total 26,440)", duplicates)        # 1,840 + 3,400 + 12,000 + 9,200
+        # Identical rows may be real separate charges: labelled as probable, not certain.
+        self.assertIn("**Probable duplicates – confirm against the bank statement**", duplicates)
+        self.assertNotIn("Duplicates removed", self.report)
         self.assertEqual(re.findall(r"^\| (\d+) \|", missing, re.M), ["8", "33", "41"])
         self.assertEqual(re.findall(r"^\| (\d+) \|", review, re.M), ["47"])
 

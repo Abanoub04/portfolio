@@ -52,16 +52,35 @@ class RunCheck:
     # --- HARD -----------------------------------------------------------------
 
     def hard_checks(self):
+        key = answer_key.for_month()
+        if key is None:
+            self.soft_note("Answer key", False, f"no answer key for {config.REPORT_MONTH} - "
+                                                f"comparisons with the key are skipped")
+
         # 1. Cleaning: fully done by Python tools, so it must match the answer key exactly.
-        duplicates = {int(r["source_line"]) for r in self.exceptions if r["issue"] == "duplicate"}
-        missing = {int(r["source_line"]) for r in self.exceptions if r["issue"] == "missing amount"}
-        raw = len(read_csv(config.TRANSACTIONS_FILE))
-        self.hard_check(
-            "Cleaning matches the answer key",
-            raw == answer_key.RAW_ROWS and len(self.clean) == answer_key.CLEAN_ROWS
-            and duplicates == set(answer_key.DUPLICATE_LINES) and missing == answer_key.MISSING_AMOUNT_LINES,
-            f"{raw} raw rows, {len(self.clean)} clean, duplicates on lines {sorted(duplicates)}, "
-            f"missing amounts on lines {sorted(missing)}")
+        if key:
+            found = {
+                "raw rows": len(read_csv(config.TRANSACTIONS_FILE)),
+                "clean rows": len(self.clean),
+                "probable duplicates": sorted(int(r["source_line"]) for r in self.exceptions
+                                              if r["issue"] == "probable duplicate"),
+                "missing amounts": sorted(int(r["source_line"]) for r in self.exceptions
+                                          if r["issue"] == "missing amount"),
+                "outside the period": sorted(int(r["source_line"]) for r in self.exceptions
+                                             if r["issue"] == "outside period"),
+            }
+            expected = {
+                "raw rows": key["raw_rows"],
+                "clean rows": key["clean_rows"],
+                "probable duplicates": sorted(key["probable_duplicates"]),
+                "missing amounts": sorted(key["missing_amounts"]),
+                "outside the period": sorted(key["outside_period"]),
+            }
+            wrong = [f"{name}: expected {expected[name]}, found {found[name]}"
+                     for name in expected if found[name] != expected[name]]
+            self.hard_check("Cleaning matches the answer key", not wrong,
+                            "; ".join(f"{name} {value}" for name, value in found.items()) if not wrong
+                            else "; ".join(wrong))
 
         # 2. Every transaction has exactly one allowed category, with the right sign.
         problems = []
@@ -76,18 +95,26 @@ class RunCheck:
 
         # 3. The AI may only decide the rows the keyword rules leave open.
         ai_lines = {int(r["source_line"]) for r in self.categorized if r["method"] == "AI"}
-        self.hard_check("The AI only decided the unclear rows", ai_lines == set(answer_key.UNCLEAR_LINES),
-                        f"AI decided lines {sorted(ai_lines)}; keyword rules decided the other "
-                        f"{len(self.categorized) - len(ai_lines)}")
+        if key:
+            self.hard_check("The AI only decided the unclear rows", ai_lines == set(key["unclear_lines"]),
+                            f"AI decided lines {sorted(ai_lines)} (answer key: {sorted(key['unclear_lines'])}); "
+                            f"keyword rules decided the other {len(self.categorized) - len(ai_lines)}")
 
-        # 4. Total expenses and sales don't depend on categories, so they must match the answer key.
-        key = answer_key.read_totals_table()
-        expenses = -sum(Decimal(r["amount_czk"]) for r in self.clean if Decimal(r["amount_czk"]) < 0)
-        sales = sum(Decimal(r["amount_czk"]) for r in self.clean if Decimal(r["amount_czk"]) > 0)
-        self.hard_check(
-            "Total expenses and sales match the answer key",
-            expenses == key["Total expenses"]["actual"] and sales == key["Sales (income)"]["actual"],
-            f"total expenses {expenses:,.0f}, sales {sales:,.0f}")
+        # 4. Total expenses and sales, from the clean data by sign (expenses negative,
+        #    income positive), so they don't depend on the AI's category choices.
+        if key:
+            table = answer_key.read_totals_table()
+            expenses = -sum(Decimal(r["amount_czk"]) for r in self.clean if Decimal(r["amount_czk"]) < 0)
+            sales = sum(Decimal(r["amount_czk"]) for r in self.clean if Decimal(r["amount_czk"]) > 0)
+            expected_expenses = table["Total expenses"]["actual"]
+            expected_sales = table["Sales (income)"]["actual"]
+            passed = expenses == expected_expenses and sales == expected_sales
+            detail = f"total expenses {expenses:,.0f}, sales {sales:,.0f}"
+            if not passed:
+                detail = (f"total expenses {expenses:,.0f} vs answer key {expected_expenses:,.0f} "
+                          f"(difference {expenses - expected_expenses:+,.0f}); sales {sales:,.0f} vs "
+                          f"answer key {expected_sales:,.0f} (difference {sales - expected_sales:+,.0f})")
+            self.hard_check("Total expenses and sales match the answer key", passed, detail)
 
         # 5-9. The Manager's reconciliation and number checks, run again independently.
         if not (self.output_dir / config.DRAFT_REPORT_FILE_NAME).exists():
@@ -129,9 +156,18 @@ class RunCheck:
         else:
             self.soft_note("Outcome", False, "the Manager finished without delivering or escalating")
 
+        # Rows the AI flagged for review: a judgement call, reported only.
+        review_lines = [int(r["source_line"]) for r in self.categorized if r.get("needs_review") == "yes"]
+        self.soft_note("Rows flagged needs_review", True,
+                       f"lines {review_lines}" if review_lines else "none")
+
+        key = answer_key.for_month()
+        if key is None:
+            return
+
         # The AI's category decisions vs the answer key.
         rows = {int(r["source_line"]): r for r in self.categorized}
-        for line, expected in answer_key.UNCLEAR_LINES.items():
+        for line, expected in key["unclear_lines"].items():
             row = rows.get(line)
             if row is None:
                 continue
@@ -140,22 +176,23 @@ class RunCheck:
                       + ("" if same else f", answer key says {expected}") + f" (reason: {row['reason']})")
             self.soft_note("AI category decision", same, detail)
 
-        # Category totals vs the answer key (they differ only if the AI chose differently).
-        key = answer_key.read_totals_table()
+        # Category totals vs the answer key. They differ when the AI chose a
+        # different category, or when the cleaning differs from the key.
+        table = answer_key.read_totals_table()
         totals = {}
         for row in self.categorized:
             totals[row["category"]] = totals.get(row["category"], Decimal(0)) + Decimal(row["amount_czk"])
         for category in config.CATEGORIES:
-            if category == "Sales" or category not in key:
+            if category == "Sales" or category not in table:
                 continue
             actual = -totals.get(category, Decimal(0))
-            expected = key[category]["actual"]
+            expected = table[category]["actual"]
             if actual == expected:
                 self.soft_note("Category total", True, f"{category} {actual:,.0f} = answer key")
             else:
                 self.soft_note("Category total", False,
                                f"{category} {actual:,.0f} vs answer key {expected:,.0f} "
-                               f"(difference {actual - expected:+,.0f}, caused by the AI decisions above)")
+                               f"(difference {actual - expected:+,.0f}; see the cleaning and AI decisions above)")
 
         # Flagged categories (they can change when category totals change).
         analysis_path = self.output_dir / config.ANALYSIS_FILE_NAME
@@ -163,15 +200,11 @@ class RunCheck:
             unusual = json.loads(analysis_path.read_text(encoding="utf-8"))["unusual_items"]
             over = [x["category"] for x in unusual["categories_over_budget"]]
             under = [x["category"] for x in unusual["categories_under_budget"]]
-            self.soft_note("Over budget (>20%)", over == answer_key.OVER_BUDGET,
-                           f"flagged {over or 'none'}; answer key {answer_key.OVER_BUDGET}")
-            self.soft_note("Under budget (>20%)", under == answer_key.UNDER_BUDGET,
-                           f"flagged {under or 'none'}; answer key {answer_key.UNDER_BUDGET}")
+            self.soft_note("Over budget (>20%)", over == key["over_budget"],
+                           f"flagged {over or 'none'}; answer key {key['over_budget'] or 'none'}")
+            self.soft_note("Under budget (>20%)", under == key["under_budget"],
+                           f"flagged {under or 'none'}; answer key {key['under_budget'] or 'none'}")
 
-        # Rows the AI flagged for review: a judgement call, reported only.
-        review_lines = [int(r["source_line"]) for r in self.categorized if r.get("needs_review") == "yes"]
-        self.soft_note("Rows flagged needs_review", True,
-                       f"lines {review_lines}" if review_lines else "none")
 
 
 def format_run_check(result):
