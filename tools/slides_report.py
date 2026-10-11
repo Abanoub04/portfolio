@@ -5,7 +5,7 @@ Every slide has an action title that states its message, e.g.
 The titles are written by Python from the Analyst's results, with fixed
 rules - so every number in them comes from the Analyst.
 
-  1. Headline numbers and key points
+  1. Headline numbers and the to-do count
   2. Budget vs actual - two bar charts: the large categories (Salaries,
      Rent) dwarf the rest, so they get their own scale
   3. Unusual items
@@ -201,7 +201,6 @@ def build_presentation(analysis, texts, path, month_label):
 def headline_slide(slide, analysis):
     total = analysis["budget_vs_actual"]["total"]
     totals = analysis["totals"]
-    unusual = analysis["unusual_items"]
     title(slide, headline_title(analysis))
     kpi(slide, 0.5, "Total expenses (CZK)", total["actual_czk"])
     kpi(slide, 3.6, "Budget (CZK)", total["budget_czk"])
@@ -209,13 +208,11 @@ def headline_slide(slide, analysis):
         f"{unsigned(total['variance_percent'])} {total['variance_direction']}")
     kpi(slide, 9.8, "Sales income (CZK)", totals["sales_income_czk"], "side note")
 
-    points = [f"{x['category']}: {x['variance_phrase']}" for x in unusual["categories_over_budget"]]
-    points += [f"{x['category']}: {x['variance_phrase']} – possible missing or late costs"
-               for x in unusual["categories_under_budget"]]
+    # The category detail is on slide 3; here only the to-do line.
     excluded, to_review = closing_actions(analysis)
-    points.append(f"To do before closing: {count_words(len(excluded) + len(to_review), 'action', 'actions')} "
-                  f"(see the last slide)")
-    bullets(slide, 4.05, 3.3, points[:5], size=22)
+    panel(slide, 0.5, 4.25, 12.25, 1.45, "Before closing",
+          [f"{count_words(len(excluded) + len(to_review), 'action', 'actions').capitalize()} "
+           f"to clear – see the last slide"], size=24, bullet=False)
 
 
 def chart_slide(slide, analysis):
@@ -231,8 +228,16 @@ def chart_slide(slide, analysis):
 
 def unusual_slide(slide, analysis, texts):
     unusual = analysis["unusual_items"]
+    refunds = analysis["totals"].get("refunds", {})
     lines = [f"{x['category']}: actual {x['actual_czk']} vs budget {x['budget_czk']}, {x['variance_phrase']}"
-             for x in unusual["categories_over_budget"] + unusual["categories_under_budget"]]
+             + refund_note(refunds.get(x["category"]), "over")
+             for x in unusual["categories_over_budget"]]
+    lines += [f"{x['category']}: actual {x['actual_czk']} vs budget {x['budget_czk']}, {x['variance_phrase']}"
+              + refund_note(refunds.get(x["category"]), "under")
+              for x in unusual["categories_under_budget"]]
+    flagged = {x["category"] for x in unusual["categories_over_budget"] + unusual["categories_under_budget"]}
+    lines += [f"{category}: actual reduced by a refund of CZK {refund['total_czk']} ({refund_lines(refund)})"
+              for category, refund in refunds.items() if category not in flagged]
     if unusual["large_transactions"]:
         lines += [f"Line {x['source_line']}: {x['description']} ({x['category']}) – {x['amount_czk']}"
                   for x in unusual["large_transactions"]]
@@ -252,6 +257,20 @@ def unusual_slide(slide, analysis, texts):
             f"Spending far below budget is not automatically a saving. For {join(under)}, ask whether "
             f"supplier invoices are still to come or were booked late, and accrue them before closing "
             f"the month."], size=20, bullet=False)
+
+
+def refund_lines(refund):
+    return ("line " if len(refund["lines"]) == 1 else "lines ") + ", ".join(str(n) for n in refund["lines"])
+
+
+def refund_note(refund, direction):
+    """A refund lowers the category's actual: it widens an under-budget gap
+    and hides part of an overspend. Both are worth saying."""
+    if not refund:
+        return ""
+    if direction == "under":
+        return f"; CZK {refund['total_czk']} of the gap is a refund ({refund_lines(refund)})"
+    return f"; after a refund of CZK {refund['total_czk']} ({refund_lines(refund)})"
 
 
 def closing_actions(analysis):
@@ -310,10 +329,10 @@ def closing_slide(slide, analysis):
               if lines]
     width = 12.3 if len(groups) == 1 else 6.0
     size = 26
-    # Both panels as tall as the longer list needs (so they line up), centred
-    # in the space under the title.
+    # Both panels as tall as the longer list needs (so they line up), right
+    # under the title.
     height = min(5.6, 1.2 + max(estimated_height(["• " + line for line in lines], width - 0.4, size - 2)
                                 for _, lines in groups))
-    top = 1.6 + max(0.0, (5.7 - height) / 2)
+    top = 1.6
     for index, (heading, lines) in enumerate(groups):
         panel(slide, 0.5 + index * 6.3, top, width, height, heading, lines, size=size)

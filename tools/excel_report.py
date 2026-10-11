@@ -58,21 +58,21 @@ def as_date(text):
         return text   # an unreadable date stays as it was
 
 
-def actual_formula(row, last_transaction_row):
+# Whole columns, so a row added to the Transactions sheet later is still
+# counted (the header row has no category, so it never matches).
+AMOUNT_COLUMN = "Transactions!$E:$E"
+CATEGORY_COLUMN = "Transactions!$F:$F"
+
+
+def actual_formula(row):
     """Actual spend of the category in column A: minus the sum of its rows in
     Transactions (expenses are negative there, refunds positive)."""
-    return (f"=-SUMIFS(Transactions!$E$2:$E${last_transaction_row},"
-            f"Transactions!$F$2:$F${last_transaction_row},$A{row})")
+    return f"=-SUMIFS({AMOUNT_COLUMN},{CATEGORY_COLUMN},$A{row})"
 
 
-def sales_formula(last_transaction_row):
+def sales_formula():
     """Sales income: the sum of the Sales rows in Transactions (positive amounts)."""
-    return (f'=SUMIFS(Transactions!$E$2:$E${last_transaction_row},'
-            f'Transactions!$F$2:$F${last_transaction_row},"Sales")')
-
-
-def last_transaction_row(categorized_rows):
-    return max(2, len(categorized_rows) + 1)
+    return f'=SUMIFS({AMOUNT_COLUMN},{CATEGORY_COLUMN},"Sales")'
 
 
 def variance_formula(row):
@@ -119,13 +119,13 @@ def build_workbook(analysis, categorized_rows, exception_rows, path, month_label
     workbook = Workbook()
     summary = workbook.active
     summary.title = "Summary"
-    write_summary(summary, analysis, month_label, last_transaction_row(categorized_rows))
+    write_summary(summary, analysis, month_label)
     write_transactions(workbook.create_sheet("Transactions"), categorized_rows)
     write_exceptions(workbook.create_sheet("Exceptions"), exception_rows)
     workbook.save(path)
 
 
-def write_summary(sheet, analysis, month_label, last_row):
+def write_summary(sheet, analysis, month_label):
     write_header(sheet, SUMMARY_HEADERS)
     categories = analysis["budget_vs_actual"]["categories"]
     first = 2
@@ -133,7 +133,7 @@ def write_summary(sheet, analysis, month_label, last_row):
 
     for row, item in enumerate(categories, start=first):
         sheet.cell(row=row, column=1, value=item["category"]).font = BODY_FONT
-        cell = sheet.cell(row=row, column=2, value=actual_formula(row, last_row))
+        cell = sheet.cell(row=row, column=2, value=actual_formula(row))
         cell.font, cell.number_format = LINK_FONT, CZK
         cell = sheet.cell(row=row, column=3, value=as_number(money(item["budget_czk"])))
         cell.font, cell.number_format = INPUT_FONT, CZK
@@ -154,11 +154,11 @@ def write_summary(sheet, analysis, month_label, last_row):
 
     sales_row = total + 2
     sheet.cell(row=sales_row, column=1, value="Sales income (side note)").font = BODY_FONT
-    cell = sheet.cell(row=sales_row, column=2, value=sales_formula(last_row))
+    cell = sheet.cell(row=sales_row, column=2, value=sales_formula())
     cell.font, cell.number_format = LINK_FONT, CZK
 
-    notes = [f"{month_label}. Actual = minus the sum of the category's rows in Transactions (expenses are "
-             f"negative there, refunds positive). Variance = Actual - Budget; + means over budget. "
+    notes = [f"{month_label}. Actual = minus the sum of the category's rows in Transactions, whole columns, so "
+             f"added rows count (expenses are negative there, refunds positive). Variance = Actual - Budget; + means over budget. "
              f"Variance % = Variance / Budget.",
              "Blue = budget (input); green = formulas reading the Transactions sheet; black = formulas."]
     understated = analysis["exceptions"]["understated_categories"]

@@ -116,7 +116,7 @@ ledgermind/
     missing/out-of-date file goes back to the Writer, a wrong number is a data
     issue (no delivery, escalate). deliver_report copies the files to report_*.
   - Both test months: 15/15 hard checks, files delivered
-- Current: deliverable polish – built, waiting for Abanoub's go-ahead
+- Deliverable polish (PR #8) – done
   - Excel Summary actual = -SUMIFS over Transactions (refunds net automatically);
     Manager checks each formula and works out its result from the Transactions rows.
     Print setup: landscape, one page wide, header row repeated.
@@ -126,6 +126,14 @@ ledgermind/
   - PowerPoint: action titles built by Python from the analysis, no explanation
     subtitle, slide 4 two panels (excluded / included-to-review), larger text.
   - Word tables: a text column is never narrower than its longest word.
+  - Both test months: 16/16 hard checks
+- Current: final polish – built, waiting for Abanoub's go-ahead
+  - Slide 1: headline cards + the to-do line only (category detail is on slide 3)
+  - Slide 3: a refund is mentioned in its category's line ("CZK 3,100 of the gap
+    is a refund (line 25)"); the Analyst lists refunds per category in totals
+  - Slide 4: panels start right under the title
+  - Excel SUMIFS over whole columns (Transactions!$E:$E, $F:$F), so added rows
+    count; the Manager's check works out the result from every row in the sheet
   - Both test months: 16/16 hard checks
 - API key: ANTHROPIC_API_KEY from the environment or a .env file (config.py
   loads it; .env is gitignored; .env.example is the template). The test

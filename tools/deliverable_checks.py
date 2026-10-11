@@ -18,8 +18,7 @@ from docx import Document
 from openpyxl import load_workbook
 from pptx import Presentation
 
-from tools.excel_report import (actual_formula, last_transaction_row, percent_formula, sales_formula,
-                                 variance_formula)
+from tools.excel_report import actual_formula, percent_formula, sales_formula, variance_formula
 from tools.writer_tools import numbers_in
 
 
@@ -68,14 +67,15 @@ def check_excel(path, analysis, categorized, exceptions):
         return problems
 
     # The Transactions rows as they are in the file: the Summary's SUMIFS
-    # formulas are worked out from these.
-    transactions = [(values[0], as_decimal(values[4]), values[5])
-                    for values in workbook["Transactions"].iter_rows(min_row=2, values_only=True)
-                    if values[0] is not None]
+    # formulas (whole columns E and F) are worked out from every one of these.
     sum_by_category = {}
-    for _, amount, category in transactions:
+    for values in workbook["Transactions"].iter_rows(min_row=2, values_only=True):
+        category = values[5] if len(values) > 5 else None
+        amount = values[4] if len(values) > 4 else None
+        if category is None or not isinstance(amount, (int, float)):
+            continue   # SUMIFS skips empty cells and text
+        amount = as_decimal(amount)
         sum_by_category[category] = sum_by_category.get(category, Decimal(0)) + (amount or 0)
-    last_row = last_transaction_row(categorized)
 
     # Summary: one row per category, then the total row.
     sheet = workbook["Summary"]
@@ -84,9 +84,9 @@ def check_excel(path, analysis, categorized, exceptions):
     actual_sum = budget_sum = Decimal(0)
     for row, item in enumerate(categories, start=first):
         label = item["category"]
-        if sheet.cell(row=row, column=2).value != actual_formula(row, last_row):
+        if sheet.cell(row=row, column=2).value != actual_formula(row):
             problems.append(f"Excel Summary row {row} ({label}): actual is not the formula "
-                            f"{actual_formula(row, last_row)}")
+                            f"{actual_formula(row)}")
         actual = -sum_by_category.get(label, Decimal(0))       # what the SUMIFS works out to
         budget = as_decimal(sheet.cell(row=row, column=3).value)
         actual_sum += actual
@@ -105,8 +105,8 @@ def check_excel(path, analysis, categorized, exceptions):
     for row in range(total_row + 1, total_row + 6):
         if sheet.cell(row=row, column=1).value == "Sales income (side note)":
             sales_formula_found = sheet.cell(row=row, column=2).value
-    if sales_formula_found != sales_formula(last_row):
-        problems.append(f"Excel: sales income is not the formula {sales_formula(last_row)}")
+    if sales_formula_found != sales_formula():
+        problems.append(f"Excel: sales income is not the formula {sales_formula()}")
     sales = sum_by_category.get("Sales", Decimal(0))
     if sales != money(analysis["totals"]["sales_income_czk"]):
         problems.append(f"Excel: sales income works out to {sales}, the Analyst says "

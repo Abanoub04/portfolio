@@ -16,12 +16,14 @@ from docx import Document
 from openpyxl import load_workbook
 from pptx import Presentation
 from pptx.chart.data import CategoryChartData
+from pptx.enum.shapes import MSO_SHAPE_TYPE
+from pptx.util import Inches
 
 import config
 from agents.action_log import ActionLog
 from agents.manager import create_manager
 from agents.simulated_ai import ManagerPolicy
-from tools import excel_report
+from tools import excel_report, slides_report
 from tools.csv_helpers import read_csv
 from tools.deliverable_checks import check_excel, check_slides, check_word
 from tools.manager_tools import ManagerDesk
@@ -115,11 +117,9 @@ class DeliveredFilesTests(unittest.TestCase):
     def test_excel_actuals_are_sumifs_over_transactions(self):
         for month, run in self.each_month():
             summary = load_workbook(run["files"]["xlsx"])["Summary"]
-            last = len(run["categorized"]) + 1
-            self.assertEqual(summary["B2"].value,
-                             f"=-SUMIFS(Transactions!$E$2:$E${last},Transactions!$F$2:$F${last},$A2)")
-            self.assertEqual(summary["B11"].value,
-                             f'=SUMIFS(Transactions!$E$2:$E${last},Transactions!$F$2:$F${last},"Sales")')
+            # Whole columns: a row added to Transactions later is still counted.
+            self.assertEqual(summary["B2"].value, "=-SUMIFS(Transactions!$E:$E,Transactions!$F:$F,$A2)")
+            self.assertEqual(summary["B11"].value, '=SUMIFS(Transactions!$E:$E,Transactions!$F:$F,"Sales")')
             self.assertIsInstance(summary["C2"].value, int)          # the budget stays an input
 
     def test_excel_print_setup(self):
@@ -156,6 +156,37 @@ class DeliveredFilesTests(unittest.TestCase):
             deck = Presentation(run["files"]["pptx"])
             titles = [slide.shapes[0].text_frame.text.replace("\u00a0", " ") for slide in deck.slides]
             self.assertEqual(titles, expected[month])
+
+    def test_powerpoint_headline_has_cards_and_to_do_line_only(self):
+        for month, run in self.each_month():
+            first = " ".join(shape.text_frame.text for shape in Presentation(run["files"]["pptx"]).slides[0].shapes
+                             if shape.has_text_frame)
+            self.assertIn("to clear – see the last slide", first)
+            for item in run["analysis"]["budget_vs_actual"]["categories"]:
+                self.assertNotIn(item["category"] + ":", first)     # category detail is on slide 3
+
+    def test_powerpoint_mentions_the_refund_in_its_category(self):
+        run = self.runs["2026-10"]
+        self.assertEqual(run["analysis"]["totals"]["refunds"], {"Travel": {"total_czk": "3,100", "lines": [25]}})
+        self.assertEqual(self.runs["2026-09"]["analysis"]["totals"]["refunds"], {})
+        refund = {"total_czk": "3,100", "lines": [25]}
+        self.assertEqual(slides_report.refund_note(refund, "over"), "; after a refund of CZK 3,100 (line 25)")
+        self.assertEqual(slides_report.refund_note(None, "under"), "")
+        unusual = " ".join(shape.text_frame.text for shape in Presentation(run["files"]["pptx"]).slides[2].shapes
+                           if shape.has_text_frame).replace("\u00a0", " ")
+        self.assertIn("Travel: actual 3,530 vs budget 15,000, CZK 11,470 (76.5%) under budget; "
+                      "CZK 3,100 of the gap is a refund (line 25)", unusual)
+        september = " ".join(shape.text_frame.text for shape in
+                             Presentation(self.runs["2026-09"]["files"]["pptx"]).slides[2].shapes
+                             if shape.has_text_frame)
+        self.assertNotIn("refund", september)                       # no refunds in September
+
+    def test_powerpoint_closing_panels_start_under_the_title(self):
+        for month, run in self.each_month():
+            closing = Presentation(run["files"]["pptx"]).slides[3]
+            boxes = [shape for shape in closing.shapes if shape.shape_type == MSO_SHAPE_TYPE.AUTO_SHAPE]
+            self.assertTrue(boxes)
+            self.assertTrue(all(abs(shape.top - Inches(1.6)) < Inches(0.01) for shape in boxes))
 
     def test_powerpoint_has_no_explanations_or_repeated_paragraphs(self):
         for month, run in self.each_month():
@@ -265,6 +296,14 @@ class TamperedFileTests(unittest.TestCase):
         workbook.save(self.files["xlsx"])
         self.assert_blocked("Excel Summary row 4 (Travel): actual works out to 3620, the Analyst says 3,530")
 
+    def test_row_added_below_the_transactions_is_counted(self):
+        # The SUMIFS cover whole columns, so the check works the added row in too.
+        workbook = load_workbook(self.files["xlsx"])
+        sheet = workbook["Transactions"]
+        sheet.append([None, None, "Added by hand", "", -5000, "Travel"])
+        workbook.save(self.files["xlsx"])
+        self.assert_blocked("Excel Summary row 4 (Travel): actual works out to 8530, the Analyst says 3,530")
+
     def test_formula_replaced_by_a_number_is_caught(self):
         workbook = load_workbook(self.files["xlsx"])
         workbook["Summary"]["D4"] = -11470        # right value, but no longer a formula
@@ -339,8 +378,8 @@ class GeneratorBugTests(unittest.TestCase):
     def test_manager_escalates_when_a_generator_writes_a_wrong_number(self):
         real_write_summary = excel_report.write_summary
 
-        def buggy_write_summary(sheet, analysis, month_label, last_row):
-            real_write_summary(sheet, analysis, month_label, last_row)
+        def buggy_write_summary(sheet, analysis, month_label):
+            real_write_summary(sheet, analysis, month_label)
             sheet["C2"] = 405000                  # Salaries budget off by 45,000
 
         with tempfile.TemporaryDirectory() as folder, \

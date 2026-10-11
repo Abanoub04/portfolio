@@ -124,12 +124,26 @@ class ReportAnalyst:
         sales = self.actual_spend("Sales")
         sales_count = sum(1 for row in self.transactions if row["category"] == "Sales")
 
+        # Refunds: positive amounts in an expense category. They are already
+        # netted in the category's actual; listed so the report can say how
+        # much of a category's variance a refund explains.
+        refunds = {}
+        for row in self.transactions:
+            amount = Decimal(row["amount_czk"])
+            if row["category"] != "Sales" and amount > 0:
+                item = refunds.setdefault(row["category"], {"total": Decimal(0), "lines": []})
+                item["total"] += amount
+                item["lines"].append(int(row["source_line"]))
+        refunds = {category: {"total_czk": format_czk(item["total"]), "lines": item["lines"]}
+                   for category, item in refunds.items()}
+
         self.results["totals"] = {
             "categories": categories,
             "total_expenses_czk": format_czk(total_expenses),
             "expense_transactions": len(self.transactions) - sales_count,
             "sales_income_czk": format_czk(sales),
             "sales_transactions": sales_count,
+            "refunds": refunds,
         }
         return self.results["totals"]
 
