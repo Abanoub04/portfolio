@@ -34,6 +34,14 @@ def format_signed_czk(amount):
     return sign + format_czk(abs(amount))
 
 
+def display_amount(amount):
+    """How an amount is shown in the exception lists: money going out as a
+    plain amount (1,840), money coming in with a plus sign (+3,100)."""
+    if amount > 0:
+        return "+" + format_czk(amount)
+    return format_czk(-amount)
+
+
 def format_percent(value):
     """Variance in % with one decimal and a sign: +68.0%. None -> "n/a"."""
     if value is None:
@@ -218,39 +226,43 @@ class ReportAnalyst:
         return {key: value for key, value in row.items() if not key.startswith("_")}
 
     def summarize_exceptions(self):
-        """Duplicates removed, missing amounts and rows needing review."""
+        """Every row set aside by the Collector (duplicates, rows outside the
+        period, missing amounts, other issues) and every row needing review."""
         self.require_loaded()
 
-        duplicates = []
-        duplicates_total = Decimal(0)
+        groups = {"probable duplicate": [], "possible duplicate": [], "outside the period": []}
+        totals = {issue: Decimal(0) for issue in groups}
         missing = []
         other_issues = []
         for row in self.exceptions:
-            if row["issue"] == "duplicate":
-                amount = -Decimal(row["amount_czk"])
-                duplicates_total += amount
-                duplicates.append({"source_line": int(row["source_line"]), "date": row["date"],
-                                   "description": row["description"], "amount_czk": format_czk(amount),
-                                   "detail": row["detail"]})
+            line = int(row["source_line"])
+            if row["issue"] in groups:
+                amount = Decimal(row["amount_czk"]) if row["amount_czk"] else Decimal(0)
+                totals[row["issue"]] += -amount
+                groups[row["issue"]].append({"source_line": line, "date": row["date"],
+                                             "description": row["description"],
+                                             "amount_czk": display_amount(amount), "detail": row["detail"]})
             elif row["issue"] == "missing amount":
                 # Which category the row would most likely fall into, using the
                 # Categorizer's keyword rules. Its actual is understated until
                 # the amount is known.
                 matches = keyword_matches(row["description"])
                 likely = matches[0] if len(matches) == 1 else "unclear"
-                missing.append({"source_line": int(row["source_line"]), "date": row["date"],
+                missing.append({"source_line": line, "date": row["date"],
                                 "description": row["description"], "counterparty": row["counterparty"],
                                 "likely_category": likely})
             else:
-                other_issues.append({"source_line": int(row["source_line"]), "issue": row["issue"],
-                                     "detail": row["detail"]})
+                other_issues.append({"source_line": line, "issue": row["issue"], "detail": row["detail"]})
 
         needs_review = []
         for row in self.transactions:
             if row.get("needs_review") == "yes":
+                amount = Decimal(row["amount_czk"])
+                refund = row["category"] != "Sales" and amount > 0
                 needs_review.append({"source_line": int(row["source_line"]), "date": row["date"],
-                                     "description": row["description"], "category": row["category"],
-                                     "amount_czk": format_czk(abs(Decimal(row["amount_czk"]))),
+                                     "description": row["description"],
+                                     "category": row["category"] + (" (refund)" if refund else ""),
+                                     "amount_czk": display_amount(amount),
                                      "review_reason": row["review_reason"]})
 
         # Category -> lines with a missing amount (its actual is understated).
@@ -260,9 +272,15 @@ class ReportAnalyst:
                 understated.setdefault(item["likely_category"], []).append(item["source_line"])
 
         self.results["exceptions"] = {
-            "duplicates_removed": duplicates,
-            "duplicates_count": len(duplicates),
-            "duplicates_total_czk": format_czk(duplicates_total),
+            "probable_duplicates": groups["probable duplicate"],
+            "probable_duplicates_count": len(groups["probable duplicate"]),
+            "probable_duplicates_total_czk": format_czk(totals["probable duplicate"]),
+            "possible_duplicates": groups["possible duplicate"],
+            "possible_duplicates_count": len(groups["possible duplicate"]),
+            "possible_duplicates_total_czk": format_czk(totals["possible duplicate"]),
+            "duplicate_window_days": config.DUPLICATE_WINDOW_DAYS,
+            "outside_the_period": groups["outside the period"],
+            "outside_the_period_count": len(groups["outside the period"]),
             "missing_amounts": missing,
             "missing_amounts_count": len(missing),
             "understated_categories": understated,
@@ -331,7 +349,8 @@ def make_analyst_tools(analyst):
         },
         {
             "name": "summarize_exceptions",
-            "description": "Summarize duplicates removed, missing amounts to follow up and rows needing review.",
+            "description": "Summarize every row set aside (probable and possible duplicates, rows outside "
+                           "the period, missing amounts) and every row needing review.",
             "input_schema": no_inputs,
             "function": analyst.summarize_exceptions,
         },

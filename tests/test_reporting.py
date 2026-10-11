@@ -116,6 +116,9 @@ class FullReportTests(unittest.TestCase):
 
         self.assertEqual(re.findall(r"^\| (\d+) \|", duplicates, re.M), ["16", "19", "22", "39"])
         self.assertIn("(4, total 26,440)", duplicates)        # 1,840 + 3,400 + 12,000 + 9,200
+        # Identical rows may be real separate charges: labelled as probable, not certain.
+        self.assertIn("**Probable duplicates – confirm against the bank statement**", duplicates)
+        self.assertNotIn("Duplicates removed", self.report)
         self.assertEqual(re.findall(r"^\| (\d+) \|", missing, re.M), ["8", "33", "41"])
         self.assertEqual(re.findall(r"^\| (\d+) \|", review, re.M), ["47"])
 
@@ -222,7 +225,7 @@ class NeedsReviewTests(unittest.TestCase):
     def setUp(self):
         self.temp_dir = tempfile.TemporaryDirectory()
         cleaner = TransactionCleaner(output_dir=self.temp_dir.name)
-        for step in [cleaner.load_transactions, cleaner.standardize_dates,
+        for step in [cleaner.load_transactions, cleaner.standardize_dates, cleaner.set_aside_outside_period,
                      cleaner.flag_missing_amounts, cleaner.remove_duplicates, cleaner.save_cleaned_data]:
             step()
         self.categorizer = TransactionCategorizer(output_dir=self.temp_dir.name)

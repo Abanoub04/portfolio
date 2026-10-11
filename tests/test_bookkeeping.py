@@ -53,6 +53,7 @@ class TempOutputTestCase(unittest.TestCase):
         cleaner = TransactionCleaner(source_file=source_file, output_dir=self.output_dir)
         cleaner.load_transactions()
         cleaner.standardize_dates()
+        cleaner.set_aside_outside_period()
         cleaner.flag_missing_amounts()
         cleaner.remove_duplicates()
         return cleaner, cleaner.save_cleaned_data()
@@ -69,10 +70,10 @@ class CollectorToolTests(TempOutputTestCase):
     def test_duplicates_found_match_answer_key(self):
         self.clean_everything()
         exceptions = read_csv(self.output_dir / config.EXCEPTIONS_FILE_NAME)
-        found = {int(row["source_line"]): row["detail"] for row in exceptions if row["issue"] == "duplicate"}
+        found = {int(row["source_line"]): row["detail"] for row in exceptions if row["issue"] == "probable duplicate"}
         self.assertEqual(set(found), set(DUPLICATES))
         for line, original in DUPLICATES.items():
-            self.assertEqual(found[line], f"Same as line {original}")
+            self.assertEqual(found[line], f"Identical to line {original} - confirm against the bank statement")
 
     def test_missing_amounts_found_match_answer_key(self):
         self.clean_everything()

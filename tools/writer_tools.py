@@ -82,7 +82,7 @@ class ReportWriter:
 
     def build_report(self, summary, unusual_items_comment, exceptions_comment):
         a = self.analysis
-        month_name = datetime.strptime(a["report_month"], "%Y-%m").strftime("%B %Y")
+        month_name = self.month_name()
         lines = [
             f"# Monthly expense report – {month_name}",
             "",
@@ -126,7 +126,7 @@ class ReportWriter:
             f"{budget['note']}.",
             "",
             f"Side note: sales income for the month was {totals['sales_income_czk']} "
-            f"({totals['sales_transactions']} invoices).",
+            f"({totals['sales_transactions']} transactions).",
             "",
         ]
         return lines
@@ -177,12 +177,30 @@ class ReportWriter:
         exceptions = self.analysis["exceptions"]
         lines = ["## Exceptions", ""]
 
-        lines.append(f"**Duplicates removed** ({exceptions['duplicates_count']}, "
-                     f"total {exceptions['duplicates_total_czk']}) – excluded from all totals above")
+        lines.append(f"**Probable duplicates – confirm against the bank statement** "
+                     f"({exceptions['probable_duplicates_count']}, total {exceptions['probable_duplicates_total_czk']}) – "
+                     f"identical to an earlier row, so excluded from all totals above; if a row turns out "
+                     f"to be a real separate charge, its amount must be added back")
         lines.append("")
         lines += self.table(["Line", "Date", "Description", "Amount", "Note"],
                             [[x["source_line"], x["date"], x["description"], x["amount_czk"], x["detail"]]
-                             for x in exceptions["duplicates_removed"]])
+                             for x in exceptions["probable_duplicates"]])
+
+        lines.append(f"**Possible duplicates – confirm against the bank statement** "
+                     f"({exceptions['possible_duplicates_count']}, total {exceptions['possible_duplicates_total_czk']}) – "
+                     f"same counterparty and amount as an earlier row within {exceptions['duplicate_window_days']} days, "
+                     f"but worded differently; excluded from all totals above until confirmed")
+        lines.append("")
+        lines += self.table(["Line", "Date", "Description", "Amount", "Note"],
+                            [[x["source_line"], x["date"], x["description"], x["amount_czk"], x["detail"]]
+                             for x in exceptions["possible_duplicates"]])
+
+        lines.append(f"**Outside the period** ({exceptions['outside_the_period_count']}) – dated outside "
+                     f"{self.month_name()}, so not included in this month's totals; book them in their own month")
+        lines.append("")
+        lines += self.table(["Line", "Date", "Description", "Amount", "Note"],
+                            [[x["source_line"], x["date"], x["description"], x["amount_czk"], x["detail"]]
+                             for x in exceptions["outside_the_period"]])
 
         lines.append(f"**Missing amounts to follow up** ({exceptions['missing_amounts_count']}) – "
                      f"not included in the totals until the amount is known, so the actual "
@@ -194,7 +212,7 @@ class ReportWriter:
                              for x in exceptions["missing_amounts"]])
 
         lines.append(f"**Items needing review** ({exceptions['needs_review_count']}) – "
-                     f"included in the totals, category to be confirmed")
+                     f"included in the totals, category to be confirmed (a refund reduces its category)")
         lines.append("")
         lines += self.table(["Line", "Date", "Description", "Category", "Amount", "To check"],
                             [[x["source_line"], x["date"], x["description"], x["category"],
@@ -210,6 +228,9 @@ class ReportWriter:
         if comment:
             lines += [comment, ""]
         return lines
+
+    def month_name(self):
+        return datetime.strptime(self.analysis["report_month"], "%Y-%m").strftime("%B %Y")
 
     def table(self, headers, rows):
         if not rows:

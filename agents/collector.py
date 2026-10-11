@@ -1,5 +1,6 @@
 """The Collector (Bookkeeping department): turns the raw file into clean data."""
 
+import config
 from agents.base_agent import Agent
 from tools.collector_tools import TransactionCleaner, make_collector_tools
 
@@ -11,9 +12,10 @@ Work only through your tools. You never change, calculate or invent numbers your
 Steps:
 1. Load the transactions.
 2. Standardize all dates to YYYY-MM-DD.
-3. Set aside rows with missing or invalid amounts. Never guess an amount.
-4. Remove duplicates (needs steps 2 and 3 first).
-5. Save the cleaned data. Saving checks that every row is either clean or an exception.
+3. Set aside rows dated outside the report month (cut-off).
+4. Set aside rows with missing or invalid amounts. Never guess an amount.
+5. Set aside probable and possible duplicates (needs steps 2 and 4 first).
+6. Save the cleaned data. Saving checks that every row is either clean or an exception.
 
 If a tool returns an error, read it, fix the cause and continue.
 When done, reply with a short summary: rows loaded, clean rows, and each exception \
@@ -25,17 +27,21 @@ FAKE_SCRIPT = [
     {"tool": "load_transactions"},
     {"tool": "remove_duplicates"},
     {"tool": "standardize_dates"},
+    {"tool": "set_aside_outside_period"},
     {"tool": "flag_missing_amounts"},
     {"tool": "remove_duplicates"},
     {"tool": "save_cleaned_data"},
     {"text": "(test mode) Cleaning finished - see save_cleaned_data in the log for the counts."},
 ]
 
-TASK = "Clean the September 2026 transactions file."
+
+def task():
+    return f"Clean the {config.month_name()} transactions file."
 
 
-def create_collector(log, output_dir=None, source_file=None):
-    cleaner = TransactionCleaner(source_file=source_file, output_dir=output_dir)
+def create_collector(log, output_dir=None, source_file=None, cleaner=None):
+    """cleaner: tests can pass a different TransactionCleaner to plant a bug."""
+    cleaner = cleaner or TransactionCleaner(source_file=source_file, output_dir=output_dir)
     return Agent(
         name="Collector",
         instructions=INSTRUCTIONS,

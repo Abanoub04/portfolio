@@ -48,7 +48,7 @@ class NormalRunTests(RunCheckTestCase):
     def test_test_mode_run_passes_all_hard_checks_with_no_differences(self):
         result = self.check(self.run_company())
         self.assertTrue(result["hard_passed"], format_run_check(result))
-        self.assertEqual(len(result["hard"]), 9)
+        self.assertEqual(len(result["hard"]), 13)
         self.assertEqual(self.differences(result), [])
 
 
@@ -75,9 +75,9 @@ class AiChoosesDifferentlyTests(RunCheckTestCase):
         details = [s["detail"] for s in self.differences(self.result)]
         self.assertIn("line 43 Card payment 8812 - ALZA.CZ: AI chose Software, answer key says Other "
                       "(reason: Electronics retailer - treated as IT costs)", details)
-        self.assertIn("Software 17,020 vs answer key 12,630 (difference +4,390, caused by the AI decisions above)",
+        self.assertIn("Software 17,020 vs answer key 12,630 (difference +4,390; see the cleaning and AI decisions above)",
                       details)
-        self.assertIn("Other 18,742 vs answer key 23,132 (difference -4,390, caused by the AI decisions above)",
+        self.assertIn("Other 18,742 vs answer key 23,132 (difference -4,390; see the cleaning and AI decisions above)",
                       details)
         # Software is no longer more than 20% under budget (17,020 vs 18,000).
         self.assertIn("flagged none; answer key ['Software']", details)
@@ -100,7 +100,8 @@ class RealBugTests(RunCheckTestCase):
         self.assertFalse(result["hard_passed"])
         failed = [c["check"] for c in result["hard"] if not c["passed"]]
         self.assertIn("Rows reconcile", failed)
-        self.assertIn("Total expenses and sales match the answer key", failed)
+        self.assertIn("Totals reconcile", failed)
+        self.assertIn("Cleaning matches the answer key", failed)
 
 
 class EscalatedRunTests(RunCheckTestCase):

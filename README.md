@@ -87,10 +87,55 @@ few minutes and costs roughly **$1** (see below).
 | `review_notes_2026-09.md` | What the Manager checked, round by round |
 | `escalation_2026-09.md` | Only if the Manager refused to deliver – the open issues |
 | `run_check_2026-09.md` | Hard checks and soft differences from the answer key (below) |
-| `exceptions.csv` | Duplicates and missing amounts that were set aside |
-| `transactions_categorized.csv` | Every transaction with its category and reason |
+| `exceptions_2026-09.csv` | Probable duplicates and missing amounts that were set aside |
+| `transactions_categorized_2026-09.csv` | Every transaction with its category and reason |
+
+All file names contain the month, so different months never overwrite each other.
 
 The full log of who did what is in `logs/`.
+
+## Options
+
+```
+python main.py                    # September 2026 (real model if a key is set)
+python main.py --test             # force test mode (fake model), even with a key in .env
+python main.py --month 2026-10    # another month: reads data/transactions_2026-10.csv
+python main.py --test --month 2026-10
+```
+
+## Test months
+
+| Month | File | Answer key | What it tests |
+|---|---|---|---|
+| September 2026 | `data/transactions.csv` | `data/README.md` | mixed date formats, exact duplicates, missing amounts, unclear rows |
+| October 2026 | `data/transactions_2026-10.csv` | `data/answer_key_2026-10.md` | a reworded duplicate, a row from the wrong month, a refund, a supplier no keyword rule knows |
+
+In test mode, September uses fixed scripts with deliberate mistakes (to show
+the Manager's review working). Other months use a simple simulated AI
+(`agents/simulated_ai.py`), which follows fixed rules - the real model
+decides for itself and may decide better.
+
+Both months pass every hard check in test mode. October's only soft
+difference is the simulated AI booking the new supplier (Taskly) in Other
+instead of Software.
+
+## How the data is cleaned
+
+- **Probable duplicates:** identical rows. **Possible duplicates:** same
+  counterparty and amount within 3 days, even if worded differently. Both
+  are excluded from the totals and always listed in the report, to be
+  confirmed against the bank statement.
+- **Outside the period:** rows dated outside the report month are set aside
+  and listed (cut-off).
+- **Refunds:** a positive amount from a supplier reduces its expense
+  category and is flagged for review. Only customer income goes to Sales.
+- **Missing amounts:** set aside, never guessed.
+
+Before delivering, the Manager also runs data-quality checks that need no
+answer key, so they work on a real client file: every clean row is in the
+report month, no possible duplicates are left, no supplier money is in Sales,
+and every set-aside row appears in the report. If any fails, the report is
+not delivered: the Manager escalates.
 
 ## Hard checks and soft differences
 

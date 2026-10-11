@@ -13,19 +13,18 @@ import shutil
 from pathlib import Path
 
 import config
-from agents.analyst import TASK as ANALYST_TASK, create_analyst
-from agents.categorizer import TASK as CATEGORIZER_TASK, create_categorizer
-from agents.collector import TASK as COLLECTOR_TASK, create_collector
+from agents import analyst, categorizer, collector
 from agents.writer import create_writer, writer_task
 from tools.review_checks import ReportReview, format_review
 
 
 class ManagerDesk:
-    def __init__(self, log, output_dir=None, writer_factory=create_writer):
+    def __init__(self, log, output_dir=None, writer_factory=create_writer, collector_factory=None):
         self.log = log
         self.output_dir = Path(output_dir or config.OUTPUT_DIR)
-        # Tests pass a different writer_factory to plant mistakes in the report.
+        # Tests pass a different writer or collector to plant mistakes.
         self.writer_factory = writer_factory
+        self.collector_factory = collector_factory or collector.create_collector
 
         self.writer_runs = 0          # 1 = first draft, 2+ = revisions
         self.last_review = None       # {"passed": bool, "draft_hash": str}
@@ -65,17 +64,17 @@ class ManagerDesk:
 
     def ask_collector(self):
         self.require_not_finished()
-        answer = create_collector(self.log, output_dir=self.output_dir).run(COLLECTOR_TASK)
+        answer = self.collector_factory(self.log, output_dir=self.output_dir).run(collector.task())
         return {"agent": "Collector", "answer": answer}
 
     def ask_categorizer(self):
         self.require_not_finished()
-        answer = create_categorizer(self.log, output_dir=self.output_dir).run(CATEGORIZER_TASK)
+        answer = categorizer.create_categorizer(self.log, output_dir=self.output_dir).run(categorizer.task())
         return {"agent": "Categorizer", "answer": answer}
 
     def ask_analyst(self):
         self.require_not_finished()
-        answer = create_analyst(self.log, output_dir=self.output_dir).run(ANALYST_TASK)
+        answer = analyst.create_analyst(self.log, output_dir=self.output_dir).run(analyst.task())
         return {"agent": "Analyst", "answer": answer}
 
     def ask_writer(self, feedback=""):
@@ -176,8 +175,10 @@ def make_manager_tools(desk):
             "function": desk.ask_writer,
         },
         {"name": "review_report",
-         "description": "Review the current draft: reconciliation of rows and totals, report numbers against "
-                        "the Analyst's results, and whether every stated cause is supported by transactions.",
+         "description": "Review the current draft: reconciliation of rows and totals, data quality (report "
+                        "month, possible duplicates, supplier money in Sales, every set-aside row in the "
+                        "report), report numbers against the Analyst's results, and whether every stated "
+                        "cause is supported by transactions.",
          "input_schema": no_inputs, "function": desk.review_report},
         {
             "name": "deliver_report",

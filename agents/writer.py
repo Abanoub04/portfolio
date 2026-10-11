@@ -1,6 +1,8 @@
 """The Writer (Reporting department): writes the monthly report."""
 
+import config
 from agents.base_agent import Agent
+from agents.simulated_ai import WriterPolicy
 from tools.writer_tools import ReportWriter, make_writer_tools
 
 INSTRUCTIONS = """You are the Writer in the Reporting department of LedgerMind, a small \
@@ -80,19 +82,23 @@ FAKE_SCRIPT_REVISED = [
     {"text": "(test mode) Revised report saved - every cause now cites its transactions."},
 ]
 
-TASK = "Write the September 2026 monthly expense report."
+
+def task():
+    return f"Write the {config.month_name()} monthly expense report."
 
 
 def writer_task(feedback="", revision=0):
     """The task for the Writer, including the Manager's feedback on a revision."""
     if not feedback:
-        return TASK
-    return (f"{TASK}\n\nThis is revision {revision}. The Manager sent the report back "
+        return task()
+    return (f"{task()}\n\nThis is revision {revision}. The Manager sent the report back "
             f"with this feedback:\n{feedback}")
 
 
 def create_writer(log, output_dir=None, revision=0, fake_script=None):
     """revision 0 = first draft; 1, 2 = rewrites after the Manager's feedback."""
+    if fake_script is None and config.REPORT_MONTH != "2026-09":
+        fake_script = WriterPolicy()   # other months: simulated AI
     if fake_script is None:
         fake_script = FAKE_SCRIPT_FIRST_DRAFT if revision == 0 else FAKE_SCRIPT_REVISED
 

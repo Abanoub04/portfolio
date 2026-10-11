@@ -92,16 +92,31 @@ ledgermind/
 - Stage 3 (Bookkeeping department) – done
 - Stage 4 (Reporting department) – done
 - Stage 5 (Manager) – done
-- Current stage: 6 (Full run) – prepared, NOT yet run with a real key;
-  waiting for Abanoub to run it on his computer (steps in README.md)
+- Stage 6 (Full run) – done: first real run on Abanoub's computer passed all
+  hard checks, delivered first time, cost about $0.34
+- Follow-ups after the real run (PR #6, first round): probable-duplicate labels,
+  --test / --month switches, October 2026 test month, simulated AI for months
+  other than September (agents/simulated_ai.py)
+- Current: October gaps fixed – built, waiting for Abanoub's go-ahead
+  - Collector: possible duplicates (same counterparty + amount within
+    DUPLICATE_WINDOW_DAYS, any wording) and cut-off (rows outside the report
+    month) are set aside and always listed in the report
+  - Categorizer: a positive amount from a supplier is a refund (reduces its
+    expense category, flagged for review); Sales is customer income only
+  - Manager data-quality checks without an answer key (tools/review_checks.py,
+    rules in tools/data_rules.py): rows in the report month, no possible
+    duplicates, no supplier money in Sales, every set-aside row in the report.
+    A failure is a data issue: delivery is blocked, the Manager escalates.
+  - Both test months pass all 13 hard checks in test mode
 - API key: ANTHROPIC_API_KEY from the environment or a .env file (config.py
   loads it; .env is gitignored; .env.example is the template). The test
   suite forces test mode (tests/__init__.py), so tests never call the API.
 - After each run main.py writes output/run_check_YYYY-MM.md: HARD checks
   (must pass, exit code 1 if not) and SOFT differences vs the answer key
   (tools/run_checks.py, answer key in tools/answer_key.py).
-- Generated (not committed) in output/: transactions_clean.csv, exceptions.csv,
-  transactions_categorized.csv, analysis_YYYY-MM.json (Analyst),
+- Generated (not committed) in output/, all named with the month:
+  transactions_clean_YYYY-MM.csv, exceptions_YYYY-MM.csv,
+  transactions_categorized_YYYY-MM.csv, analysis_YYYY-MM.json (Analyst),
   draft_report_YYYY-MM.md (Writer), report_YYYY-MM.md (only after the
   Manager's review passed), review_notes_YYYY-MM.md, escalation_YYYY-MM.md
   (only if not delivered)

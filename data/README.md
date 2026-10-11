@@ -4,6 +4,10 @@ All data is invented. The company is a fictional Prague design studio
 ("Studio Vltava s.r.o."), 6 employees, amounts in CZK.
 
 ## transactions.csv
+
+(Identical rows are reported as *probable* duplicates: two identical rows can also be
+two real charges, so the report asks to confirm them against the bank statement.)
+
 Columns: `date, description, counterparty, amount_czk`
 Sign convention: **expenses are negative, income (Sales) is positive.**
 

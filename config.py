@@ -53,8 +53,8 @@ MAX_TOKENS = 16000
 MAX_STEPS = 15
 
 # --- Reporting period -----------------------------------------------------
-REPORT_MONTH = "2026-09"   # September 2026
 CURRENCY = "CZK"
+DEFAULT_MONTH = "2026-09"   # used when main.py is run without --month
 
 # --- File locations (all relative to the project root) --------------------
 PROJECT_ROOT = Path(__file__).parent
@@ -62,23 +62,45 @@ DATA_DIR = PROJECT_ROOT / "data"
 LOGS_DIR = PROJECT_ROOT / "logs"
 OUTPUT_DIR = PROJECT_ROOT / "output"
 
-TRANSACTIONS_FILE = DATA_DIR / "transactions.csv"
-BUDGET_FILE = DATA_DIR / "budget.csv"
+BUDGET_FILE = DATA_DIR / "budget.csv"   # the monthly budget, the same every month
 
-# Files produced by the Bookkeeping department (written to output/).
-CLEAN_FILE_NAME = "transactions_clean.csv"           # Collector: clean rows
-EXCEPTIONS_FILE_NAME = "exceptions.csv"              # Collector: rows set aside
-CATEGORIZED_FILE_NAME = "transactions_categorized.csv"  # Categorizer
+# The raw transactions file of each month. September was the first month and
+# keeps its original name; later months are called transactions_YYYY-MM.csv.
+TRANSACTIONS_FILES = {"2026-09": "transactions.csv"}
 
-# Files produced by the Reporting department (written to output/).
-ANALYSIS_FILE_NAME = f"analysis_{REPORT_MONTH}.json"  # Analyst: all the numbers
-DRAFT_REPORT_FILE_NAME = f"draft_report_{REPORT_MONTH}.md"  # Writer: draft for review
 
-# Files produced by the Manager (written to output/).
-REPORT_FILE_NAME = f"report_{REPORT_MONTH}.md"              # the delivered report
-REVIEW_NOTES_FILE_NAME = f"review_notes_{REPORT_MONTH}.md"  # what was checked
-ESCALATION_FILE_NAME = f"escalation_{REPORT_MONTH}.md"      # only if not delivered
-RUN_CHECK_FILE_NAME = f"run_check_{REPORT_MONTH}.md"        # hard checks + soft differences
+def set_month(month):
+    """Choose the month to report on. Sets the input file and the names of
+    all files the agents write, so months never overwrite each other."""
+    global REPORT_MONTH, TRANSACTIONS_FILE
+    global CLEAN_FILE_NAME, EXCEPTIONS_FILE_NAME, CATEGORIZED_FILE_NAME
+    global ANALYSIS_FILE_NAME, DRAFT_REPORT_FILE_NAME
+    global REPORT_FILE_NAME, REVIEW_NOTES_FILE_NAME, ESCALATION_FILE_NAME, RUN_CHECK_FILE_NAME
+
+    REPORT_MONTH = month
+    TRANSACTIONS_FILE = DATA_DIR / TRANSACTIONS_FILES.get(month, f"transactions_{month}.csv")
+
+    # Bookkeeping department
+    CLEAN_FILE_NAME = f"transactions_clean_{month}.csv"              # Collector: clean rows
+    EXCEPTIONS_FILE_NAME = f"exceptions_{month}.csv"                 # Collector: rows set aside
+    CATEGORIZED_FILE_NAME = f"transactions_categorized_{month}.csv"  # Categorizer
+    # Reporting department
+    ANALYSIS_FILE_NAME = f"analysis_{month}.json"           # Analyst: all the numbers
+    DRAFT_REPORT_FILE_NAME = f"draft_report_{month}.md"     # Writer: draft for review
+    # Manager
+    REPORT_FILE_NAME = f"report_{month}.md"                 # the delivered report
+    REVIEW_NOTES_FILE_NAME = f"review_notes_{month}.md"     # what was checked
+    ESCALATION_FILE_NAME = f"escalation_{month}.md"         # only if not delivered
+    RUN_CHECK_FILE_NAME = f"run_check_{month}.md"           # hard checks + soft differences
+
+
+def month_name():
+    """'2026-09' -> 'September 2026'."""
+    from datetime import datetime
+    return datetime.strptime(REPORT_MONTH, "%Y-%m").strftime("%B %Y")
+
+
+set_month(DEFAULT_MONTH)
 
 # How many times the Manager may send the report back to the Writer
 # before it must stop and escalate to the owner.
@@ -103,6 +125,10 @@ OVER_BUDGET_THRESHOLD = 0.20
 # except in these categories, where large payments are normal.
 LARGE_TRANSACTION_THRESHOLD = 20000
 LARGE_TRANSACTION_EXCLUDED_CATEGORIES = ["Salaries", "Rent"]
+
+# Two rows with the same counterparty and amount, at most this many days
+# apart, are set aside as possible duplicates (even if worded differently).
+DUPLICATE_WINDOW_DAYS = 3
 
 # The categories the Categorizer is allowed to use.
 CATEGORIES = [

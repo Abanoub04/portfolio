@@ -2,6 +2,7 @@
 
 import config
 from agents.base_agent import Agent
+from agents.simulated_ai import CategorizerPolicy
 from tools.categorizer_tools import TransactionCategorizer, make_categorizer_tools
 
 INSTRUCTIONS = f"""You are the Categorizer in the Bookkeeping department of LedgerMind, \
@@ -15,7 +16,9 @@ Allowed categories (no others): {", ".join(config.CATEGORIES)}.
 - Software: software subscriptions, hosting, domains, cloud services.
 - Travel: transport, accommodation, fuel, parking while travelling.
 - Marketing: advertising, printed promotion, events and trade fairs.
-- Sales: income from customers (positive amounts only).
+- Sales: income from customers only (positive amounts). A positive amount from a supplier \
+is a refund, not Sales: put it in the expense category it refunds (it reduces that \
+category's spend; the tool flags it for review automatically).
 - Other: any other expense, including office running costs and professional fees.
 
 Work only through your tools:
@@ -51,7 +54,9 @@ FAKE_SCRIPT = [
     {"text": "(test mode) Categorizing finished - see save_categorized_data in the log for the counts."},
 ]
 
-TASK = "Categorize the clean September 2026 transactions."
+
+def task():
+    return f"Categorize the clean {config.month_name()} transactions."
 
 
 def create_categorizer(log, output_dir=None):
@@ -61,5 +66,6 @@ def create_categorizer(log, output_dir=None):
         instructions=INSTRUCTIONS,
         tools=make_categorizer_tools(categorizer),
         log=log,
-        fake_script=FAKE_SCRIPT,
+        # September: the fixed demo script above. Other months: simulated AI.
+        fake_script=FAKE_SCRIPT if config.REPORT_MONTH == "2026-09" else CategorizerPolicy(),
     )

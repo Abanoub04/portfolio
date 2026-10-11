@@ -11,8 +11,11 @@ How it works:
   3. save_categorized_data() refuses to save until every row has exactly
      one category from the allowed list.
 
-Sign rule (checked for keywords and AI alike): Sales must be money coming
-in (positive amount); every other category is money going out (negative).
+Sign rules (checked for keywords and AI alike):
+  - Sales is customer income only: a positive amount, never from a supplier.
+  - Expense categories normally hold negative amounts. A positive amount from
+    a supplier is a REFUND: it stays in its expense category (so it reduces
+    that category's spend) and is always flagged for review.
 """
 
 import re
@@ -55,14 +58,46 @@ def keyword_matches(description):
     return matches
 
 
-def sign_problem(category, amount_text):
-    """Return an error message if the amount's sign doesn't fit the category."""
-    amount = Decimal(amount_text)
-    if category == "Sales" and amount <= 0:
-        return "Sales must be a positive amount (money coming in)"
-    if category != "Sales" and amount > 0:
-        return f"{category} is an expense, but the amount is positive (money coming in)"
+def is_customer_row(row):
+    """A row is customer income if its description matches a Sales keyword."""
+    return "Sales" in keyword_matches(row["description"])
+
+
+def is_supplier_row(row, all_rows):
+    """A row comes from a supplier if its description matches an expense
+    keyword rule, or its counterparty is paid (negative amount) this month."""
+    matches = keyword_matches(row["description"])
+    if "Sales" in matches:
+        return False
+    if any(category != "Sales" for category in matches):
+        return True
+    counterparty = row["counterparty"].strip().casefold()
+    return any(other["counterparty"].strip().casefold() == counterparty and Decimal(other["amount_czk"]) < 0
+               for other in all_rows)
+
+
+def sign_problem(category, row, all_rows):
+    """Return an error message if the amount doesn't fit the category, else None."""
+    amount = Decimal(row["amount_czk"])
+    if category == "Sales":
+        if amount <= 0:
+            return "Sales must be a positive amount (money coming in)"
+        if is_supplier_row(row, all_rows):
+            return (f"{row['counterparty']} is a supplier: a positive amount from a supplier is a refund, "
+                    f"not Sales. Put it in the expense category it refunds")
+    elif amount > 0 and is_customer_row(row):
+        return f"this is customer income (an invoice), so it belongs in Sales, not {category}"
     return None
+
+
+def is_refund(category, row):
+    """A positive amount in an expense category is a refund."""
+    return category != "Sales" and Decimal(row["amount_czk"]) > 0
+
+
+def refund_note(category):
+    return (f"Positive amount from a supplier - treated as a refund that reduces {category}. "
+            f"Confirm with the credit note.")
 
 
 class TransactionCategorizer:
@@ -111,17 +146,23 @@ class TransactionCategorizer:
             raise RuntimeError("No data loaded - call load_cleaned_data first")
 
         categorized = {}
+        refunds = []
         left_for_ai = []
         for row in self.rows:
             if row["category"]:
                 continue  # already decided
 
             matches = keyword_matches(row["description"])
-            if len(matches) == 1 and not sign_problem(matches[0], row["amount_czk"]):
+            if len(matches) == 1 and not sign_problem(matches[0], row, self.rows):
                 category = matches[0]
                 row["category"] = category
                 row["method"] = "keyword"
                 row["reason"] = "Matched keyword rule"
+                if is_refund(category, row):
+                    row["reason"] = f"Matched keyword rule; refund from a {category} supplier"
+                    row["needs_review"] = "yes"
+                    row["review_reason"] = refund_note(category)
+                    refunds.append(int(row["source_line"]))
                 categorized[category] = categorized.get(category, 0) + 1
                 continue
 
@@ -132,12 +173,13 @@ class TransactionCategorizer:
             elif len(matches) > 1:
                 view["why_unclear"] = f"keywords for several categories matched: {matches}"
             else:
-                view["why_unclear"] = f"keyword says {matches[0]}, but {sign_problem(matches[0], row['amount_czk'])}"
+                view["why_unclear"] = f"keyword says {matches[0]}, but {sign_problem(matches[0], row, self.rows)}"
             left_for_ai.append(view)
 
         return {
             "categorized_by_keyword": sum(categorized.values()),
             "by_category": categorized,
+            "refunds_flagged_for_review": refunds,
             "left_for_you_to_decide": left_for_ai,
         }
 
@@ -158,12 +200,17 @@ class TransactionCategorizer:
             raise ValueError(f"Line {source_line} already has category {row['category']} "
                              f"({row['method']}); each transaction gets exactly one category")
 
-        problem = sign_problem(category, row["amount_czk"])
+        problem = sign_problem(category, row, self.rows)
         if problem:
             raise ValueError(f"Line {source_line}: {problem}")
 
         if needs_review and not review_reason.strip():
             raise ValueError("needs_review is set, so review_reason must say what should be checked")
+
+        # A refund is always checked by a person, whatever the AI said.
+        if is_refund(category, row):
+            needs_review = True
+            review_reason = review_reason.strip() or refund_note(category)
 
         row["category"] = category
         row["method"] = "AI"
@@ -231,7 +278,9 @@ def make_categorizer_tools(categorizer):
             "name": "set_category",
             "description": "Give one uncategorized transaction its category, with a short reason "
                            "a controller would accept. Only for rows the keyword rules left open. "
-                           "If unsure, still choose one category and set needs_review with a reason.",
+                           "If unsure, still choose one category and set needs_review with a reason. "
+                           "Sales is customer income only; a positive amount from a supplier is a refund "
+                           "and goes in the expense category it refunds.",
             "input_schema": {
                 "type": "object",
                 "properties": {

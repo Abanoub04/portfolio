@@ -102,7 +102,7 @@ class ManagerDeliversTests(TempDirTestCase):
         self.assertIn("## Review 1 (first draft) – FAILED", notes)
         self.assertIn("Unsupported claim - no transactions cited", notes)
         self.assertIn("## Review 2 (revision 1) – PASSED", notes)
-        self.assertIn("[PASS] Rows reconcile: 61 raw rows = 54 clean + 4 duplicates + 3 missing amounts", notes)
+        self.assertIn("[PASS] Rows reconcile: 61 raw rows = 54 clean + 4 probable duplicates + 3 missing amounts", notes)
         self.assertIn("## Delivered", notes)
 
     def test_delivered_report_matches_answer_key(self):
@@ -199,6 +199,13 @@ class ReviewCheckTests(TempDirTestCase):
         self.tamper("exceeded 20,000 CZK.", "exceeded 20,000 CZK." + WRONG_CLAIM)
         result = self.review()
         self.assertEqual(self.failed_checks(result), ["Every cause is supported by cited transactions"])
+
+    def test_cause_with_extra_word_is_still_a_claim(self):
+        # "driven mainly by" must be recognised as a cause, like "driven by".
+        self.tamper("exceeded 20,000 CZK.", "exceeded 20,000 CZK. Travel was driven mainly by the Berlin trip.")
+        result = self.review()
+        self.assertTrue(any("no transactions cited" in i["issue"] and "driven mainly by" in i["issue"]
+                            for i in result["issues"]))
 
     def test_cause_without_citation_is_caught(self):
         self.tamper("(lines 37, 38, 40)", "")

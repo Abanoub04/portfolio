@@ -20,16 +20,26 @@ import config
 # The placeholder from .env.example - not a real key.
 PLACEHOLDER_KEY = "your-key-here"
 
+# Set by `python main.py --test`: use the fake model even if a key is set.
+test_mode_forced = False
+
+
+def force_test_mode():
+    global test_mode_forced
+    test_mode_forced = True
+
 
 def using_real_model():
-    """True when an API key is available, so the real model can be used."""
+    """True when an API key is available (and test mode is not forced)."""
+    if test_mode_forced:
+        return False
     key = os.environ.get("ANTHROPIC_API_KEY", "").strip()
     return bool(key) and key != PLACEHOLDER_KEY
 
 
 def placeholder_key_set():
     """True when .env was copied but the placeholder was not replaced."""
-    return os.environ.get("ANTHROPIC_API_KEY", "").strip() == PLACEHOLDER_KEY
+    return not test_mode_forced and os.environ.get("ANTHROPIC_API_KEY", "").strip() == PLACEHOLDER_KEY
 
 
 def create_model(fake_script=None):
@@ -111,12 +121,16 @@ class FakeModel:
     A script is a list of steps. Each step is either
         {"tool": "tool_name", "input": {...}}   -> ask to use a tool
         {"text": "final answer"}                -> finish with this answer
+
+    A script can also be a "policy": a function that receives the
+    conversation so far and returns the next step. That lets the fake model
+    react to tool results (see agents/simulated_ai.py).
     """
 
     name = "fake model (test mode)"
 
     def __init__(self, script):
-        self.script = list(script)
+        self.script = script if callable(script) else list(script)
         self.step_number = 0
         # Every conversation the fake model receives is kept here,
         # so tests can check that tool results were passed back correctly.
@@ -125,13 +139,19 @@ class FakeModel:
     def respond(self, instructions, messages, tools):
         self.received.append(list(messages))
 
+        if callable(self.script):
+            self.step_number += 1
+            return self.make_response(self.script(messages))
+
         # When the script runs out, finish politely.
         if self.step_number >= len(self.script):
             return FakeResponse("end_turn", [FakeTextBlock("(fake model) Script finished.")])
 
         step = self.script[self.step_number]
         self.step_number += 1
+        return self.make_response(step)
 
+    def make_response(self, step):
         if "tool" in step:
             block = FakeToolUseBlock(
                 id=f"fake_call_{self.step_number}",
