@@ -133,7 +133,8 @@ class RunCheck:
                        "No supplier money counted as Sales",
                        "Every set-aside row appears in the report"]
         report_hard = ["Budget table = Analyst's results", "Every number comes from the Analyst",
-                       "Percentages belong to the right category", "Deliverables are present and up to date",
+                       "Percentages belong to the right category", "No signed amounts with over/under budget",
+                       "Deliverables are present and up to date",
                        "Deliverables match the Analyst's results"]
         for name in always_hard:
             self.hard_check(name, checks[name]["passed"], self.detail(checks[name], review))

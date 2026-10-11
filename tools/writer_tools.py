@@ -28,6 +28,22 @@ from tools.word_report import build_document
 NUMBER_PATTERN = re.compile(r"\d+(?:,\d{3})*(?:\.\d+)?")
 
 
+# Double-negative wording: a signed amount next to the word that already gives
+# the direction, e.g. "CZK -33,514 under budget" or "+3.0% over budget".
+# Correct: "CZK 33,514 (5.5%) under budget".
+SIGNED_DIRECTION = [
+    re.compile(r"(?<![\w])[-−]\s*(?:CZK\s*)?\d[\d,]*(?:\.\d+)?\s*%?(?:\s*CZK)?[^.;:\n]{0,40}?"
+               r"\b(?:under|below)\s+budget", re.IGNORECASE),
+    re.compile(r"(?<![\w])\+\s*(?:CZK\s*)?\d[\d,]*(?:\.\d+)?\s*%?(?:\s*CZK)?[^.;:\n]{0,40}?"
+               r"\b(?:over|above)\s+budget", re.IGNORECASE),
+]
+
+
+def sign_wording_problems(text):
+    """Phrases like "-5,370 under budget" or "+3.0% over budget" in the text."""
+    return [match.group(0) for pattern in SIGNED_DIRECTION for match in pattern.finditer(text)]
+
+
 def numbers_in(text):
     """All numbers in a text, as Decimal values ("42,000" -> 42000)."""
     return [Decimal(match.replace(",", "")) for match in NUMBER_PATTERN.findall(text)]
@@ -76,6 +92,11 @@ class ReportWriter:
             raise ValueError("Report NOT saved. These numbers are not in the Analyst's output - "
                              "copy numbers exactly from read_analysis, never calculate or round: "
                              + "; ".join(problems))
+        wording = [phrase for text in texts.values() for phrase in sign_wording_problems(text)]
+        if wording:
+            raise ValueError("Report NOT saved. Double negative: a signed amount with 'over/under budget' "
+                             f"({wording}). Write it without the sign, e.g. 'CZK 33,514 (5.5%) under budget' - "
+                             "use the variance_phrase from the analysis.")
 
         texts = {name: text.strip() for name, text in texts.items()}
         report = self.build_report(**texts)

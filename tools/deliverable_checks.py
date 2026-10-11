@@ -18,7 +18,8 @@ from docx import Document
 from openpyxl import load_workbook
 from pptx import Presentation
 
-from tools.excel_report import percent_formula, variance_formula
+from tools.excel_report import (actual_formula, last_transaction_row, percent_formula, sales_formula,
+                                 variance_formula)
 from tools.writer_tools import numbers_in
 
 
@@ -39,6 +40,22 @@ def unknown_numbers(text, allowed):
     return sorted({f"{n:,}" for n in numbers_in(text) if n not in allowed})
 
 
+def word_text(path):
+    """All text in a Word file: paragraphs and table cells."""
+    document = Document(path)
+    parts = [p.text for p in document.paragraphs]
+    for table in document.tables:
+        parts += [cell.text for row in table.rows for cell in row.cells]
+    return "\n".join(parts)
+
+
+def slides_text(path):
+    """All text on all slides."""
+    deck = Presentation(path)
+    return "\n".join(shape.text_frame.text for slide in deck.slides for shape in slide.shapes
+                     if shape.has_text_frame)
+
+
 # --- Excel ------------------------------------------------------------------------
 
 def check_excel(path, analysis, categorized, exceptions):
@@ -50,29 +67,49 @@ def check_excel(path, analysis, categorized, exceptions):
     if problems:
         return problems
 
+    # The Transactions rows as they are in the file: the Summary's SUMIFS
+    # formulas are worked out from these.
+    transactions = [(values[0], as_decimal(values[4]), values[5])
+                    for values in workbook["Transactions"].iter_rows(min_row=2, values_only=True)
+                    if values[0] is not None]
+    sum_by_category = {}
+    for _, amount, category in transactions:
+        sum_by_category[category] = sum_by_category.get(category, Decimal(0)) + (amount or 0)
+    last_row = last_transaction_row(categorized)
+
     # Summary: one row per category, then the total row.
     sheet = workbook["Summary"]
     categories = analysis["budget_vs_actual"]["categories"]
     first, last = 2, 1 + len(categories)
+    actual_sum = budget_sum = Decimal(0)
     for row, item in enumerate(categories, start=first):
-        problems += check_summary_row(sheet, row, item, item["category"])
+        label = item["category"]
+        if sheet.cell(row=row, column=2).value != actual_formula(row, last_row):
+            problems.append(f"Excel Summary row {row} ({label}): actual is not the formula "
+                            f"{actual_formula(row, last_row)}")
+        actual = -sum_by_category.get(label, Decimal(0))       # what the SUMIFS works out to
+        budget = as_decimal(sheet.cell(row=row, column=3).value)
+        actual_sum += actual
+        budget_sum += budget or 0
+        problems += check_summary_row(sheet, row, item, label, actual, budget)
     total_row = last + 1
     total = analysis["budget_vs_actual"]["total"]
     expected = {2: f"=SUM(B{first}:B{last})", 3: f"=SUM(C{first}:C{last})"}
     for column, formula in expected.items():
         if sheet.cell(row=total_row, column=column).value != formula:
             problems.append(f"Excel Summary row {total_row}: expected formula {formula}")
-    actual_sum = sum(as_decimal(sheet.cell(row=r, column=2).value) or 0 for r in range(first, last + 1))
-    budget_sum = sum(as_decimal(sheet.cell(row=r, column=3).value) or 0 for r in range(first, last + 1))
     problems += check_summary_row(sheet, total_row, total, "Total expenses", actual_sum, budget_sum)
 
-    # Sales side note.
-    sales = None
+    # Sales side note: a SUMIFS over the Sales rows.
+    sales_formula_found = None
     for row in range(total_row + 1, total_row + 6):
         if sheet.cell(row=row, column=1).value == "Sales income (side note)":
-            sales = as_decimal(sheet.cell(row=row, column=2).value)
+            sales_formula_found = sheet.cell(row=row, column=2).value
+    if sales_formula_found != sales_formula(last_row):
+        problems.append(f"Excel: sales income is not the formula {sales_formula(last_row)}")
+    sales = sum_by_category.get("Sales", Decimal(0))
     if sales != money(analysis["totals"]["sales_income_czk"]):
-        problems.append(f"Excel: sales income {sales} differs from the Analyst's "
+        problems.append(f"Excel: sales income works out to {sales}, the Analyst says "
                         f"{analysis['totals']['sales_income_czk']}")
 
     # Transactions: every categorized row, with the same amount and category.
@@ -96,18 +133,15 @@ def check_excel(path, analysis, categorized, exceptions):
     return problems
 
 
-def check_summary_row(sheet, row, item, label, actual=None, budget=None):
-    """One Summary row: label, actual and budget values, the two formulas and
-    what those formulas work out to."""
+def check_summary_row(sheet, row, item, label, actual, budget):
+    """One Summary row: label, what the actual works out to, the budget, the two
+    variance formulas and what those formulas work out to."""
     problems = []
     where = f"Excel Summary row {row} ({label})"
     if sheet.cell(row=row, column=1).value != label:
         return [f"{where}: label is '{sheet.cell(row=row, column=1).value}'"]
-    if actual is None:   # a category row: the values are in the cells
-        actual = as_decimal(sheet.cell(row=row, column=2).value)
-        budget = as_decimal(sheet.cell(row=row, column=3).value)
     if actual != money(item["actual_czk"]):
-        problems.append(f"{where}: actual {actual} differs from the Analyst's {item['actual_czk']}")
+        problems.append(f"{where}: actual works out to {actual}, the Analyst says {item['actual_czk']}")
     if budget != money(item["budget_czk"]):
         problems.append(f"{where}: budget {budget} differs from the Analyst's {item['budget_czk']}")
     if sheet.cell(row=row, column=4).value != variance_formula(row):
@@ -202,8 +236,9 @@ def check_slides(path, analysis, allowed, max_slides=5):
     # Headline numbers on the first slide.
     total = analysis["budget_vs_actual"]["total"]
     headline = " ".join(shape.text_frame.text for shape in deck.slides[0].shapes if shape.has_text_frame)
+    direction = f"{total['variance_percent'].lstrip('+-')} {total['variance_direction']}"
     for label, value in [("total expenses", total["actual_czk"]), ("budget", total["budget_czk"]),
-                         ("variance", total["variance_czk"]), ("variance %", total["variance_percent"]),
+                         ("variance", total["variance_czk"].lstrip("+-")), ("variance %", direction),
                          ("sales income", analysis["totals"]["sales_income_czk"])]:
         if not re.search(r"(?<![\d,.])" + re.escape(value) + r"(?![\d,])", headline):
             problems.append(f"PowerPoint headline: {label} {value} is missing")

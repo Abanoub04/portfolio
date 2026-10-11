@@ -107,7 +107,7 @@ ledgermind/
     rules in tools/data_rules.py): rows in the report month, no possible
     duplicates, no supplier money in Sales, every set-aside row in the report.
     A failure is a data issue: delivery is blocked, the Manager escalates.
-- Current: deliverable files – built, waiting for Abanoub's go-ahead
+- Deliverable files (PR #7) – done
   - Writer tool create_deliverables builds draft_report_YYYY-MM.xlsx/.docx/.pptx
     with Python (tools/excel_report.py, word_report.py, slides_report.py) from
     the analysis and the saved draft text; Markdown and Word share one content
@@ -116,6 +116,17 @@ ledgermind/
     missing/out-of-date file goes back to the Writer, a wrong number is a data
     issue (no delivery, escalate). deliver_report copies the files to report_*.
   - Both test months: 15/15 hard checks, files delivered
+- Current: deliverable polish – built, waiting for Abanoub's go-ahead
+  - Excel Summary actual = -SUMIFS over Transactions (refunds net automatically);
+    Manager checks each formula and works out its result from the Transactions rows.
+    Print setup: landscape, one page wide, header row repeated.
+  - No double negatives: the Analyst gives variance_phrase ("CZK 33,514 (5.5%)
+    under budget"); save_report and the Manager's review block signed
+    "over/under budget" phrases (md, Word, PowerPoint).
+  - PowerPoint: action titles built by Python from the analysis, no explanation
+    subtitle, slide 4 two panels (excluded / included-to-review), larger text.
+  - Word tables: a text column is never narrower than its longest word.
+  - Both test months: 16/16 hard checks
 - API key: ANTHROPIC_API_KEY from the environment or a .env file (config.py
   loads it; .env is gitignored; .env.example is the template). The test
   suite forces test mode (tests/__init__.py), so tests never call the API.

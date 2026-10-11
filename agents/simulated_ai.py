@@ -131,18 +131,18 @@ class WriterPolicy:
         exceptions = analysis["exceptions"]
 
         summary = [f"Total expenses for {config.month_name()} were {total['actual_czk']} CZK against a budget "
-                   f"of {total['budget_czk']} CZK ({total['variance_czk']} CZK, {total['variance_percent']})."]
+                   f"of {total['budget_czk']} CZK: {total['variance_phrase']}."]
         over = unusual["categories_over_budget"]
         under = unusual["categories_under_budget"]
         threshold = unusual["over_budget_threshold"]
         if over:
             summary.append(f"More than {threshold} over budget: "
-                           + ", ".join(f"{x['category']} ({x['variance_percent']})" for x in over) + ".")
+                           + ", ".join(f"{x['category']} ({x['variance_percent'].lstrip('+')})" for x in over) + ".")
         else:
             summary.append(f"No category was more than {threshold} over budget.")
         if under:
             summary.append(f"More than {threshold} under budget, which may indicate missing or late costs: "
-                           + ", ".join(f"{x['category']} ({x['variance_percent']})" for x in under) + ".")
+                           + ", ".join(f"{x['category']} ({x['variance_percent'].lstrip('-')})" for x in under) + ".")
         summary.append(f"Side note: sales income was {analysis['totals']['sales_income_czk']} CZK.")
 
         comments = []

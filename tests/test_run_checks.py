@@ -48,7 +48,7 @@ class NormalRunTests(RunCheckTestCase):
     def test_test_mode_run_passes_all_hard_checks_with_no_differences(self):
         result = self.check(self.run_company())
         self.assertTrue(result["hard_passed"], format_run_check(result))
-        self.assertEqual(len(result["hard"]), 15)
+        self.assertEqual(len(result["hard"]), 16)
         self.assertEqual(self.differences(result), [])
 
 
@@ -113,7 +113,7 @@ class EscalatedRunTests(RunCheckTestCase):
         text = format_run_check(result)
         self.assertIn("[DIFFERENT] Outcome: escalated; Writer revisions needed: 2 of 2", text)
         self.assertIn("[DIFFERENT] Last draft (not delivered): Percentages belong to the right category", text)
-        self.assertIn("'Travel ... +68.0%' is wrong", text)
+        self.assertIn("'Travel ... 68.0%' is wrong", text)
 
 
 if __name__ == "__main__":

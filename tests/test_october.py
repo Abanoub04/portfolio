@@ -73,7 +73,7 @@ class OctoberRunTests(OctoberTestCase):
     def test_all_hard_checks_pass_and_report_is_delivered(self):
         failed = [c["check"] for c in self.check["hard"] if not c["passed"]]
         self.assertEqual(failed, [])
-        self.assertEqual(len(self.check["hard"]), 15)
+        self.assertEqual(len(self.check["hard"]), 16)
         self.assertEqual(self.manager.desk.finished, "delivered")
 
     def test_only_soft_difference_is_the_ai_choice_for_taskly(self):

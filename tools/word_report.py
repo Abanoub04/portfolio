@@ -103,20 +103,29 @@ def add_table(document, block):
 
 
 def set_column_widths(table, headers, rows):
-    """Short columns (line, date, amounts) get the width of their longest
-    value so they never wrap; long text columns share the rest of the page."""
-    cm_per_character = 0.2          # roughly, at 9 pt
-    natural = []
+    """Short columns (line, date, amounts) get the width of their longest value,
+    so they never wrap. Text columns share the rest of the page, but each is at
+    least as wide as its longest single word, so no word is ever split."""
+    cm_per_character = 0.2          # roughly, at 9 pt (bold headers included)
+    padding = 2                     # characters of cell padding
+
+    natural, minimum = [], []
     for column, title in enumerate(headers):
-        longest = max([len(title)] + [len(row[column]) for row in rows])
-        natural.append((longest + 2) * cm_per_character)
+        values = [title] + [row[column] for row in rows]
+        natural.append((max(len(v) for v in values) + padding) * cm_per_character)
+        longest_word = max(len(word) for v in values for word in v.split() or [""])
+        minimum.append((longest_word + padding) * cm_per_character)
+
     short = [w <= 3.0 for w in natural]
-    fixed = sum(w for w, is_short in zip(natural, short) if is_short)
-    flexible = sum(w for w, is_short in zip(natural, short) if not is_short)
-    room = TEXT_WIDTH_CM - fixed
-    widths = [w if is_short else (w * room / flexible if flexible else w) for w, is_short in zip(natural, short)]
-    if not flexible:   # only short columns: stretch them all to the page width
-        widths = [w * TEXT_WIDTH_CM / fixed for w in widths]
+    widths = [w if is_short else m for w, m, is_short in zip(natural, minimum, short)]
+    room = TEXT_WIDTH_CM - sum(widths)
+    # Share the remaining room among the text columns, in proportion to how
+    # much more they would need to fit on one line.
+    want = [(n - m) if not is_short else 0 for n, m, is_short in zip(natural, minimum, short)]
+    if room > 0 and sum(want) > 0:
+        widths = [w + room * x / sum(want) for w, x in zip(widths, want)]
+    elif room > 0:
+        widths = [w * TEXT_WIDTH_CM / sum(widths) for w in widths]
 
     table.autofit = False
     for column, width_cm in enumerate(widths):

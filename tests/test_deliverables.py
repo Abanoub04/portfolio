@@ -64,9 +64,7 @@ class DeliveredFilesTests(unittest.TestCase):
         config.set_month(config.DEFAULT_MONTH)
 
     def each_month(self):
-        for month, run in self.runs.items():
-            with self.subTest(month=month):
-                yield month, run
+        return list(self.runs.items())
 
     def test_files_are_delivered_with_the_report(self):
         for month, run in self.each_month():
@@ -113,6 +111,72 @@ class DeliveredFilesTests(unittest.TestCase):
             self.assertEqual(summary["A9"].value, "Total expenses")
             self.assertEqual(summary["B9"].value, "=SUM(B2:B8)")
             self.assertEqual(summary["D9"].value, "=B9-C9")
+
+    def test_excel_actuals_are_sumifs_over_transactions(self):
+        for month, run in self.each_month():
+            summary = load_workbook(run["files"]["xlsx"])["Summary"]
+            last = len(run["categorized"]) + 1
+            self.assertEqual(summary["B2"].value,
+                             f"=-SUMIFS(Transactions!$E$2:$E${last},Transactions!$F$2:$F${last},$A2)")
+            self.assertEqual(summary["B11"].value,
+                             f'=SUMIFS(Transactions!$E$2:$E${last},Transactions!$F$2:$F${last},"Sales")')
+            self.assertIsInstance(summary["C2"].value, int)          # the budget stays an input
+
+    def test_excel_print_setup(self):
+        for month, run in self.each_month():
+            for sheet in load_workbook(run["files"]["xlsx"]).worksheets:
+                self.assertEqual(sheet.page_setup.orientation, "landscape", sheet.title)
+                self.assertEqual(sheet.page_setup.fitToWidth, 1, sheet.title)
+                self.assertEqual(sheet.page_setup.fitToHeight, 0, sheet.title)
+                self.assertTrue(sheet.sheet_properties.pageSetUpPr.fitToPage, sheet.title)
+                self.assertEqual(sheet.print_title_rows, "$1:$1", sheet.title)   # header row on every page
+
+    def test_no_double_negatives_in_any_format(self):
+        from tools.deliverable_checks import slides_text, word_text
+        from tools.writer_tools import sign_wording_problems
+        for month, run in self.each_month():
+            report = (run["dir"] / f"report_{month}.md").read_text(encoding="utf-8")
+            for text in [report, word_text(run["files"]["docx"]), slides_text(run["files"]["pptx"])]:
+                self.assertEqual(sign_wording_problems(text), [])
+            self.assertIn(run["analysis"]["budget_vs_actual"]["total"]["variance_phrase"],
+                          word_text(run["files"]["docx"]))
+
+    def test_powerpoint_action_titles(self):
+        expected = {
+            "2026-09": ["September 3.0% over budget; Travel and Marketing overspent, Software may have missing costs",
+                        "Salaries and Rent close to budget; biggest variance: Marketing, CZK 17,000 (68.0%) over budget",
+                        "Overspend in Travel and Marketing; Software more than 20% under budget",
+                        "Three actions before closing September"],
+            "2026-10": ["October 5.5% under budget; three categories may have missing costs",
+                        "Salaries and Rent close to budget; biggest variance: Travel, CZK 11,470 (76.5%) under budget",
+                        "Travel, Software and Marketing more than 20% under budget – check for missing or late costs",
+                        "Four actions before closing October"],
+        }
+        for month, run in self.each_month():
+            deck = Presentation(run["files"]["pptx"])
+            titles = [slide.shapes[0].text_frame.text.replace("\u00a0", " ") for slide in deck.slides]
+            self.assertEqual(titles, expected[month])
+
+    def test_powerpoint_has_no_explanations_or_repeated_paragraphs(self):
+        for month, run in self.each_month():
+            deck = Presentation(run["files"]["pptx"])
+            all_text = " ".join(shape.text_frame.text for slide in deck.slides for shape in slide.shapes
+                                if shape.has_text_frame)
+            self.assertNotIn("separate scales", all_text)
+            closing = " ".join(shape.text_frame.text for shape in deck.slides[3].shapes if shape.has_text_frame)
+            self.assertNotIn(run["texts"]["exceptions_comment"], closing)
+            self.assertNotIn("Before the month is closed", closing)
+
+    def test_word_columns_never_split_a_word(self):
+        from docx.shared import Cm
+        for month, run in self.each_month():
+            for table in Document(run["files"]["docx"]).tables:
+                for column_index, column in enumerate(table.columns):
+                    words = [w for cell in column.cells for w in cell.text.split()]
+                    longest = max((len(w) for w in words), default=0)
+                    # Word stores widths in twips, so allow a rounding difference of 0.01 cm.
+                    self.assertGreaterEqual(column.width, Cm((longest + 2) * 0.2) - Cm(0.01),
+                                            f"{month}: column {column_index} narrower than its longest word")
 
     def test_excel_transactions_and_exceptions_sheets(self):
         for month, run in self.each_month():
@@ -186,11 +250,20 @@ class TamperedFileTests(unittest.TestCase):
         failed, _ = self.review()
         self.assertEqual(failed, {})
 
-    def test_wrong_number_in_excel_is_caught(self):
+    def test_typed_number_instead_of_sumifs_is_caught(self):
         workbook = load_workbook(self.files["xlsx"])
-        workbook["Summary"]["B4"] = 3350          # Travel actual: 3,530 typed wrong
+        workbook["Summary"]["B4"] = 3530          # Travel actual typed in: right value, but no longer traceable
         workbook.save(self.files["xlsx"])
-        self.assert_blocked("Excel Summary row 4 (Travel): actual 3350 differs from the Analyst's 3,530")
+        self.assert_blocked("Excel Summary row 4 (Travel): actual is not the formula =-SUMIFS(")
+
+    def test_wrong_amount_in_transactions_sheet_is_caught(self):
+        workbook = load_workbook(self.files["xlsx"])
+        sheet = workbook["Transactions"]
+        for row in sheet.iter_rows(min_row=2):
+            if row[0].value == 25:                # the Berlin hotel refund, +3,100
+                row[4].value = 3010
+        workbook.save(self.files["xlsx"])
+        self.assert_blocked("Excel Summary row 4 (Travel): actual works out to 3620, the Analyst says 3,530")
 
     def test_formula_replaced_by_a_number_is_caught(self):
         workbook = load_workbook(self.files["xlsx"])
@@ -231,6 +304,34 @@ class TamperedFileTests(unittest.TestCase):
             self.desk.deliver_report("note")
 
 
+class WordingCheckTests(unittest.TestCase):
+    def test_writer_rejects_double_negatives(self):
+        from tools.writer_tools import ReportWriter
+        writer = ReportWriter()
+        writer.analysis = {"total": "-33,514", "percent": "-5.5%"}
+        with self.assertRaises(ValueError) as caught:
+            writer.save_report("Total expenses were CZK -33,514 under budget.", "Nothing to explain.")
+        self.assertIn("Double negative", str(caught.exception))
+
+    def test_manager_catches_a_double_negative_in_a_file(self):
+        with tempfile.TemporaryDirectory() as folder:
+            output_dir = Path(folder)
+            run_company("2026-10", output_dir)
+            draft = output_dir / config.DRAFT_DELIVERABLES["docx"]
+            for name in config.REPORT_DELIVERABLES.values():
+                (output_dir / name).unlink()
+            document = Document(draft)
+            document.add_paragraph("Travel was -11,470 under budget.")
+            document.save(draft)
+            result = ReportReview(output_dir=output_dir).run()
+        failed = {c["check"]: c for c in result["checks"] if not c["passed"]}
+        self.assertIn("No signed amounts with over/under budget", failed)
+        issues = [i for i in result["issues"] if i["check"] == "No signed amounts with over/under budget"]
+        self.assertEqual([i["owner"] for i in issues], ["writer"])
+        self.assertIn('Double negative in the docx: "-11,470 under budget"', issues[0]["issue"])
+        config.set_month(config.DEFAULT_MONTH)
+
+
 class GeneratorBugTests(unittest.TestCase):
     def tearDown(self):
         config.set_month(config.DEFAULT_MONTH)
@@ -238,8 +339,8 @@ class GeneratorBugTests(unittest.TestCase):
     def test_manager_escalates_when_a_generator_writes_a_wrong_number(self):
         real_write_summary = excel_report.write_summary
 
-        def buggy_write_summary(sheet, analysis, month_label):
-            real_write_summary(sheet, analysis, month_label)
+        def buggy_write_summary(sheet, analysis, month_label, last_row):
+            real_write_summary(sheet, analysis, month_label, last_row)
             sheet["C2"] = 405000                  # Salaries budget off by 45,000
 
         with tempfile.TemporaryDirectory() as folder, \
