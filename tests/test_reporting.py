@@ -225,7 +225,7 @@ class NeedsReviewTests(unittest.TestCase):
     def setUp(self):
         self.temp_dir = tempfile.TemporaryDirectory()
         cleaner = TransactionCleaner(output_dir=self.temp_dir.name)
-        for step in [cleaner.load_transactions, cleaner.standardize_dates,
+        for step in [cleaner.load_transactions, cleaner.standardize_dates, cleaner.set_aside_outside_period,
                      cleaner.flag_missing_amounts, cleaner.remove_duplicates, cleaner.save_cleaned_data]:
             step()
         self.categorizer = TransactionCategorizer(output_dir=self.temp_dir.name)

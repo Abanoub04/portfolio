@@ -3,14 +3,19 @@
 All checks are plain Python, so they give the same answer every time.
 
 a) Reconciliation
-   1. Rows:   raw rows = clean rows + probable duplicates + missing amounts (+ other issues)
+   1. Rows:   raw rows = clean rows + every row set aside (by reason)
    2. Totals: each category recalculated from the categorized data = the
-              Analyst's figure; sum of categories = total expenses; total
-              expenses and sales recalculated from the clean data agree.
+              Analyst's figure; sum of categories = total expenses; every
+              amount, and sales minus expenses, agree with the clean data.
    3. Report: every cell of the budget table = the Analyst's results; every
               number in the report appears in the Analyst's results; every
               percentage in the text belongs to the category it is next to.
-b) Claims
+b) Data quality (no answer key - these work on any client file)
+   - every clean row is dated in the report month
+   - no two clean rows share counterparty and amount within a few days
+   - no positive amount from a supplier is counted as Sales
+   - every row set aside by the Collector appears in the report
+c) Claims
    Every sentence that explains a cause ("driven by", "linked to", ...) must
    cite source lines. The cited transactions must exist, belong to the
    categories the sentence talks about, and contain the names it uses
@@ -18,7 +23,8 @@ b) Claims
 
 Each problem is returned as an issue with an owner:
    "writer" -> the report must be rewritten (sent back to the Writer)
-   "data"   -> the numbers themselves don't reconcile (escalate, don't rewrite)
+   "data"   -> the data doesn't reconcile or fails a data-quality rule
+               (the Manager must escalate; rewriting the report can't fix it)
 """
 
 import json
@@ -28,6 +34,7 @@ from pathlib import Path
 
 import config
 from tools.csv_helpers import read_csv
+from tools.data_rules import in_report_month, is_supplier_row, possible_duplicate_pairs
 from tools.writer_tools import numbers_in
 
 # Words that state a cause. One extra word may sit in between, so that
@@ -101,6 +108,10 @@ class ReportReview:
 
         self.check_rows()
         self.check_totals()
+        self.check_period()
+        self.check_possible_duplicates()
+        self.check_supplier_sales()
+        self.check_exceptions_in_report()
         self.check_report_table()
         self.check_report_numbers()
         self.check_percentages()
@@ -118,14 +129,16 @@ class ReportReview:
         counts = {}
         for row in self.exceptions:
             counts[row["issue"]] = counts.get(row["issue"], 0) + 1
-        duplicates = counts.pop("probable duplicate", 0)
-        missing = counts.pop("missing amount", 0)
-        other = sum(counts.values())
-
         raw, clean = len(self.raw_rows), len(self.clean)
-        accounted = clean + duplicates + missing + other
-        detail = (f"{raw} raw rows = {clean} clean + {duplicates} probable duplicates + {missing} missing amounts"
-                  + (f" + {other} other issues" if other else ""))
+        accounted = clean + sum(counts.values())
+        # e.g. "61 raw rows = 54 clean + 4 probable duplicates + 3 missing amounts"
+        plural = {"probable duplicate": "probable duplicates", "possible duplicate": "possible duplicates",
+                  "missing amount": "missing amounts", "outside the period": "outside the period"}
+        order = ["probable duplicate", "possible duplicate", "outside the period", "missing amount"]
+        issues_in_order = order + sorted(issue for issue in counts if issue not in order)
+        parts = [f"{counts[issue]} {issue if counts[issue] == 1 else plural.get(issue, issue)}"
+                 for issue in issues_in_order if counts.get(issue)]
+        detail = f"{raw} raw rows = {clean} clean" + "".join(f" + {part}" for part in parts)
         issues = []
         if raw != accounted:
             issues.append(f"Row reconciliation fails: {raw} raw rows but {accounted} accounted for")
@@ -158,19 +171,63 @@ class ReportReview:
         if category_sum != total_expenses:
             issues.append(f"Sum of categories {category_sum:,} differs from total expenses {total_expenses:,}")
 
-        # Independent check straight from the Collector's clean file.
-        clean_expenses = -sum(Decimal(r["amount_czk"]) for r in self.clean if Decimal(r["amount_czk"]) < 0)
-        clean_income = sum(Decimal(r["amount_czk"]) for r in self.clean if Decimal(r["amount_czk"]) > 0)
-        if clean_expenses != total_expenses:
-            issues.append(f"Total expenses {total_expenses:,} differ from the clean data {clean_expenses:,}")
         sales = money(self.analysis["totals"]["sales_income_czk"])
-        if clean_income != sales:
-            issues.append(f"Sales income {sales:,} differs from the clean data {clean_income:,}")
+        if sales != recalculated.get("Sales", Decimal(0)):
+            issues.append(f"Sales income {sales:,} differs from the categorized data "
+                          f"{recalculated.get('Sales', Decimal(0)):,}")
+
+        # Independent check straight from the Collector's clean file: every row
+        # kept its amount, and sales minus expenses equals the net of all clean
+        # amounts. (Works with refunds, which are positive amounts in expenses.)
+        clean_amounts = {r["source_line"]: Decimal(r["amount_czk"]) for r in self.clean}
+        changed = [r["source_line"] for r in self.categorized
+                   if clean_amounts.get(r["source_line"]) != Decimal(r["amount_czk"])]
+        if changed:
+            issues.append(f"Amounts differ between the clean and categorized data on lines {changed}")
+        net = sum(clean_amounts.values())
+        if sales - total_expenses != net:
+            issues.append(f"Sales {sales:,} minus expenses {total_expenses:,} does not equal the net of the "
+                          f"clean data {net:,}")
 
         detail = (f"sum of {len(self.analysis['totals']['categories'])} categories = total expenses "
-                  f"{self.analysis['totals']['total_expenses_czk']} = clean data; sales "
-                  f"{self.analysis['totals']['sales_income_czk']} = clean data")
+                  f"{self.analysis['totals']['total_expenses_czk']}; sales "
+                  f"{self.analysis['totals']['sales_income_czk']}; every amount and the net agree with the clean data")
         self.record("Totals reconcile", not issues, detail if not issues else "; ".join(issues), "data", issues)
+
+    # --- data quality (no answer key: works on any client file) ------------
+
+    def check_period(self):
+        outside = [f"line {r['source_line']} ({r['date']})" for r in self.clean if not in_report_month(r["date"])]
+        issues = [f"Clean data contains rows dated outside {config.month_name()}: {', '.join(outside)}"] if outside else []
+        self.record("Every clean row is dated in the report month", not issues,
+                    f"{len(self.clean)} rows, all in {config.month_name()}", "data", issues)
+
+    def check_possible_duplicates(self):
+        pairs = possible_duplicate_pairs(self.clean)
+        issues = [f"Lines {earlier['source_line']} and {row['source_line']} share counterparty "
+                  f"{row['counterparty']} and amount {row['amount_czk']} within {config.DUPLICATE_WINDOW_DAYS} days"
+                  for row, earlier in pairs]
+        self.record("No possible duplicates left in the clean data", not issues,
+                    f"no two rows share counterparty and amount within {config.DUPLICATE_WINDOW_DAYS} days",
+                    "data", issues)
+
+    def check_supplier_sales(self):
+        issues = [f"Line {r['source_line']} ({r['description']}, {r['counterparty']}) is counted as Sales, "
+                  f"but comes from a supplier"
+                  for r in self.categorized
+                  if r["category"] == "Sales" and Decimal(r["amount_czk"]) > 0 and is_supplier_row(r, self.clean)]
+        sales_rows = sum(1 for r in self.categorized if r["category"] == "Sales")
+        self.record("No supplier money counted as Sales", not issues,
+                    f"{sales_rows} Sales rows, all customer income", "data", issues)
+
+    def check_exceptions_in_report(self):
+        section = self.report.split("## Exceptions", 1)[-1] if "## Exceptions" in self.report else ""
+        listed = {int(n) for n in re.findall(r"^\| (\d+) \|", section, re.MULTILINE)}
+        missing = [f"line {r['source_line']} ({r['issue']})" for r in self.exceptions
+                   if int(r["source_line"]) not in listed]
+        issues = [f"Set-aside rows missing from the report: {', '.join(missing)}"] if missing else []
+        self.record("Every set-aside row appears in the report", not issues,
+                    f"all {len(self.exceptions)} set-aside rows are listed", "data", issues)
 
     def check_report_table(self):
         """Every cell of the budget table equals the Analyst's results."""

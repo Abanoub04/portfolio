@@ -115,8 +115,27 @@ the Manager's review working). Other months use a simple simulated AI
 (`agents/simulated_ai.py`), which follows fixed rules - the real model
 decides for itself and may decide better.
 
-October currently fails two hard checks on purpose: it shows three gaps the
-code does not handle yet (see `tests/test_october.py`, the "known gap" tests).
+Both months pass every hard check in test mode. October's only soft
+difference is the simulated AI booking the new supplier (Taskly) in Other
+instead of Software.
+
+## How the data is cleaned
+
+- **Probable duplicates:** identical rows. **Possible duplicates:** same
+  counterparty and amount within 3 days, even if worded differently. Both
+  are excluded from the totals and always listed in the report, to be
+  confirmed against the bank statement.
+- **Outside the period:** rows dated outside the report month are set aside
+  and listed (cut-off).
+- **Refunds:** a positive amount from a supplier reduces its expense
+  category and is flagged for review. Only customer income goes to Sales.
+- **Missing amounts:** set aside, never guessed.
+
+Before delivering, the Manager also runs data-quality checks that need no
+answer key, so they work on a real client file: every clean row is in the
+report month, no possible duplicates are left, no supplier money is in Sales,
+and every set-aside row appears in the report. If any fails, the report is
+not delivered: the Manager escalates.
 
 ## Hard checks and soft differences
 

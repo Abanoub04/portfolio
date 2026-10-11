@@ -8,6 +8,8 @@ Two rules are enforced by the code itself, whatever the AI decides:
     goes to the exceptions list with a reason.
   - Nothing is guessed. A missing amount or an unreadable date is set
     aside, never filled in.
+  - Nothing from another month is counted. Rows dated outside the report
+    month are set aside as "outside the period" (cut-off).
 
 Every row keeps its line number from the original file ("source_line"),
 so each clean row and each exception can be traced back to the source.
@@ -19,6 +21,7 @@ from pathlib import Path
 
 import config
 from tools.csv_helpers import read_csv, write_csv
+from tools.data_rules import days_between, in_report_month, possible_duplicate_pairs
 
 CLEAN_COLUMNS = ["source_line", "date", "description", "counterparty", "amount_czk"]
 EXCEPTION_COLUMNS = ["source_line", "date", "description", "counterparty", "amount_czk", "issue", "detail"]
@@ -37,7 +40,7 @@ class TransactionCleaner:
 
         # Which cleaning steps have been done. save_cleaned_data() checks
         # these, so a half-cleaned file can never be saved.
-        self.done = {"load": False, "dates": False, "amounts": False, "duplicates": False}
+        self.done = {"load": False, "dates": False, "period": False, "amounts": False, "duplicates": False}
 
     # --- helpers ----------------------------------------------------------
 
@@ -66,7 +69,7 @@ class TransactionCleaner:
             self.rows.append(row)
 
         self.rows_loaded = len(self.rows)
-        self.done = {"load": True, "dates": False, "amounts": False, "duplicates": False}
+        self.done = {"load": True, "dates": False, "period": False, "amounts": False, "duplicates": False}
 
         # Count which date formats appear, to show how messy the file is.
         formats_found = {}
@@ -154,13 +157,37 @@ class TransactionCleaner:
         self.done["amounts"] = True
         return {"rows_set_aside": set_aside, "rows_with_valid_amount": len(kept_rows)}
 
-    def remove_duplicates(self):
-        """Set aside rows that repeat an earlier row (same date, description,
-        counterparty and amount). The first occurrence stays in the clean data.
+    def set_aside_outside_period(self):
+        """Cut-off: set aside every row dated outside the report month."""
+        self.require("dates", "Standardize the dates first (standardize_dates).")
 
-        They are only PROBABLE duplicates: two identical rows can also be two
-        real charges (e.g. two hotel rooms). They are excluded from the totals,
-        but listed so a person can confirm them against the bank statement."""
+        outside = []
+        kept_rows = []
+        for row in self.rows:
+            if not in_report_month(row["date"]):
+                self.set_aside(row, "outside the period",
+                               f"Dated {row['date']}, outside {config.month_name()} - belongs to another period")
+                outside.append({"source_line": row["source_line"], "date": row["date"],
+                                "description": row["description"]})
+                continue
+            kept_rows.append(row)
+
+        self.rows = kept_rows
+        self.done["period"] = True
+        return {"report_month": config.REPORT_MONTH, "outside_the_period_set_aside": outside,
+                "rows_remaining": len(kept_rows)}
+
+    def remove_duplicates(self):
+        """Set aside rows that look like a second copy of an earlier row.
+        The first occurrence stays in the clean data.
+
+        - PROBABLE duplicate: identical date, description, counterparty and amount.
+        - POSSIBLE duplicate: same counterparty and amount within
+          config.DUPLICATE_WINDOW_DAYS days, even if worded differently.
+
+        Both can also be real separate charges (e.g. two hotel rooms). They are
+        excluded from the totals, but always listed in the report so a person
+        can confirm them against the bank statement."""
         # Dates must be in one format first, otherwise "03.09.2026" and
         # "2026-09-03" look different and a duplicate would be missed.
         # The same goes for amounts: "-1840" and "-1840.00" must compare equal.
@@ -188,14 +215,30 @@ class TransactionCleaner:
             first_seen[key] = row["source_line"]
             kept_rows.append(row)
 
+        # Second pass: the same charge with different wording.
+        possible = []
+        later_copies = set()
+        for row, earlier in possible_duplicate_pairs(kept_rows):
+            gap = days_between(row["date"], earlier["date"])
+            days = "same date" if gap == 0 else f"{gap} day{'s' if gap > 1 else ''} apart"
+            self.set_aside(row, "possible duplicate",
+                           f"Same counterparty and amount as line {earlier['source_line']} ({days}), "
+                           f"different wording - confirm against the bank statement")
+            possible.append({"source_line": row["source_line"], "duplicate_of_line": earlier["source_line"],
+                             "description": row["description"], "amount_czk": row["amount_czk"]})
+            later_copies.add(row["source_line"])
+        kept_rows = [row for row in kept_rows if row["source_line"] not in later_copies]
+
         self.rows = kept_rows
         self.done["duplicates"] = True
-        return {"probable_duplicates_set_aside": duplicates, "rows_remaining": len(kept_rows)}
+        return {"probable_duplicates_set_aside": duplicates, "possible_duplicates_set_aside": possible,
+                "rows_remaining": len(kept_rows)}
 
     def save_cleaned_data(self):
         """Write the clean data and the exceptions list, after checking that
         every loaded row is accounted for."""
         self.require("dates", "Dates are not standardized yet (standardize_dates).")
+        self.require("period", "Rows outside the report month are not set aside yet (set_aside_outside_period).")
         self.require("amounts", "Amounts are not checked yet (flag_missing_amounts).")
         self.require("duplicates", "Duplicates are not removed yet (remove_duplicates).")
 
@@ -250,6 +293,13 @@ def make_collector_tools(cleaner):
             "function": cleaner.standardize_dates,
         },
         {
+            "name": "set_aside_outside_period",
+            "description": "Cut-off: move rows dated outside the report month to the exceptions list. "
+                           "Needs standardized dates.",
+            "input_schema": no_inputs,
+            "function": cleaner.set_aside_outside_period,
+        },
+        {
             "name": "flag_missing_amounts",
             "description": "Move rows with an empty or non-numeric amount to the exceptions list. "
                            "Amounts are never guessed.",
@@ -258,9 +308,10 @@ def make_collector_tools(cleaner):
         },
         {
             "name": "remove_duplicates",
-            "description": "Move repeated rows (same date, description, counterparty and amount) to the "
-                           "exceptions list as probable duplicates, keeping the first occurrence. "
-                           "Needs standardized dates.",
+            "description": "Move second copies to the exceptions list, keeping the first occurrence: "
+                           "identical rows as probable duplicates, and rows with the same counterparty and "
+                           f"amount within {config.DUPLICATE_WINDOW_DAYS} days as possible duplicates. "
+                           "Needs standardized dates and checked amounts.",
             "input_schema": no_inputs,
             "function": cleaner.remove_duplicates,
         },

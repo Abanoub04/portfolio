@@ -94,16 +94,20 @@ ledgermind/
 - Stage 5 (Manager) – done
 - Stage 6 (Full run) – done: first real run on Abanoub's computer passed all
   hard checks, delivered first time, cost about $0.34
-- Current: follow-ups after the real run – built, waiting for Abanoub's go-ahead
-  - identical rows are labelled "probable duplicates – confirm against the
-    bank statement" (still excluded from totals)
-  - `python main.py --test` forces test mode; `--month YYYY-MM` picks a month
-    (config.set_month: all file names contain the month)
-  - second test month October 2026 (data/transactions_2026-10.csv, answer key
-    data/answer_key_2026-10.md). Known gaps, recorded as expectedFailure in
-    tests/test_october.py: reworded duplicates, rows from another month,
-    refunds (sign rule forces them into Sales)
-  - test mode for months other than September uses agents/simulated_ai.py
+- Follow-ups after the real run (PR #6, first round): probable-duplicate labels,
+  --test / --month switches, October 2026 test month, simulated AI for months
+  other than September (agents/simulated_ai.py)
+- Current: October gaps fixed – built, waiting for Abanoub's go-ahead
+  - Collector: possible duplicates (same counterparty + amount within
+    DUPLICATE_WINDOW_DAYS, any wording) and cut-off (rows outside the report
+    month) are set aside and always listed in the report
+  - Categorizer: a positive amount from a supplier is a refund (reduces its
+    expense category, flagged for review); Sales is customer income only
+  - Manager data-quality checks without an answer key (tools/review_checks.py,
+    rules in tools/data_rules.py): rows in the report month, no possible
+    duplicates, no supplier money in Sales, every set-aside row in the report.
+    A failure is a data issue: delivery is blocked, the Manager escalates.
+  - Both test months pass all 13 hard checks in test mode
 - API key: ANTHROPIC_API_KEY from the environment or a .env file (config.py
   loads it; .env is gitignored; .env.example is the template). The test
   suite forces test mode (tests/__init__.py), so tests never call the API.

@@ -16,7 +16,9 @@ Allowed categories (no others): {", ".join(config.CATEGORIES)}.
 - Software: software subscriptions, hosting, domains, cloud services.
 - Travel: transport, accommodation, fuel, parking while travelling.
 - Marketing: advertising, printed promotion, events and trade fairs.
-- Sales: income from customers (positive amounts only).
+- Sales: income from customers only (positive amounts). A positive amount from a supplier \
+is a refund, not Sales: put it in the expense category it refunds (it reduces that \
+category's spend; the tool flags it for review automatically).
 - Other: any other expense, including office running costs and professional fees.
 
 Work only through your tools:

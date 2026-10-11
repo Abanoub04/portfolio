@@ -62,17 +62,17 @@ class RunCheck:
             found = {
                 "raw rows": len(read_csv(config.TRANSACTIONS_FILE)),
                 "clean rows": len(self.clean),
-                "probable duplicates": sorted(int(r["source_line"]) for r in self.exceptions
-                                              if r["issue"] == "probable duplicate"),
+                "duplicates": sorted(int(r["source_line"]) for r in self.exceptions
+                                     if r["issue"] in ("probable duplicate", "possible duplicate")),
                 "missing amounts": sorted(int(r["source_line"]) for r in self.exceptions
                                           if r["issue"] == "missing amount"),
                 "outside the period": sorted(int(r["source_line"]) for r in self.exceptions
-                                             if r["issue"] == "outside period"),
+                                             if r["issue"] == "outside the period"),
             }
             expected = {
                 "raw rows": key["raw_rows"],
                 "clean rows": key["clean_rows"],
-                "probable duplicates": sorted(key["probable_duplicates"]),
+                "duplicates": sorted(key["duplicates"]),
                 "missing amounts": sorted(key["missing_amounts"]),
                 "outside the period": sorted(key["outside_period"]),
             }
@@ -82,14 +82,17 @@ class RunCheck:
                             "; ".join(f"{name} {value}" for name, value in found.items()) if not wrong
                             else "; ".join(wrong))
 
-        # 2. Every transaction has exactly one allowed category, with the right sign.
+        # 2. Every transaction has exactly one allowed category, with the right sign:
+        #    Sales positive; expenses negative, or positive only as a refund flagged for review.
         problems = []
         for row in self.categorized:
             amount = Decimal(row["amount_czk"])
             if row["category"] not in config.CATEGORIES:
                 problems.append(f"line {row['source_line']}: '{row['category']}'")
-            elif (row["category"] == "Sales") != (amount > 0):
-                problems.append(f"line {row['source_line']}: {row['category']} with amount {amount}")
+            elif row["category"] == "Sales" and amount <= 0:
+                problems.append(f"line {row['source_line']}: Sales with amount {amount}")
+            elif row["category"] != "Sales" and amount > 0 and row.get("needs_review") != "yes":
+                problems.append(f"line {row['source_line']}: refund in {row['category']} not flagged for review")
         self.hard_check("Every transaction has exactly one valid category", not problems,
                         f"{len(self.categorized)} transactions" if not problems else "; ".join(problems))
 
@@ -100,12 +103,13 @@ class RunCheck:
                             f"AI decided lines {sorted(ai_lines)} (answer key: {sorted(key['unclear_lines'])}); "
                             f"keyword rules decided the other {len(self.categorized) - len(ai_lines)}")
 
-        # 4. Total expenses and sales, from the clean data by sign (expenses negative,
-        #    income positive), so they don't depend on the AI's category choices.
+        # 4. Total expenses and sales. Which expense category a row is in doesn't
+        #    matter here; only Sales vs expenses does - and the code decides that
+        #    (customer income is Sales, a supplier's refund is not).
         if key:
             table = answer_key.read_totals_table()
-            expenses = -sum(Decimal(r["amount_czk"]) for r in self.clean if Decimal(r["amount_czk"]) < 0)
-            sales = sum(Decimal(r["amount_czk"]) for r in self.clean if Decimal(r["amount_czk"]) > 0)
+            sales = sum(Decimal(r["amount_czk"]) for r in self.categorized if r["category"] == "Sales")
+            expenses = -sum(Decimal(r["amount_czk"]) for r in self.categorized if r["category"] != "Sales")
             expected_expenses = table["Total expenses"]["actual"]
             expected_sales = table["Sales (income)"]["actual"]
             passed = expenses == expected_expenses and sales == expected_sales
@@ -123,7 +127,11 @@ class RunCheck:
         review = ReportReview(output_dir=self.output_dir).run()
         checks = {c["check"]: c for c in review["checks"]}
 
-        always_hard = ["Rows reconcile", "Totals reconcile"]
+        always_hard = ["Rows reconcile", "Totals reconcile",
+                       "Every clean row is dated in the report month",
+                       "No possible duplicates left in the clean data",
+                       "No supplier money counted as Sales",
+                       "Every set-aside row appears in the report"]
         report_hard = ["Budget table = Analyst's results", "Every number comes from the Analyst",
                        "Percentages belong to the right category"]
         for name in always_hard:
@@ -175,6 +183,14 @@ class RunCheck:
             detail = (f"line {line} {row['description']}: AI chose {row['category']}"
                       + ("" if same else f", answer key says {expected}") + f" (reason: {row['reason']})")
             self.soft_note("AI category decision", same, detail)
+
+        # Refunds: must sit in the expense category they refund.
+        for line, expected in key.get("refunds", {}).items():
+            row = rows.get(line)
+            if row is not None:
+                self.soft_note("Refund", row["category"] == expected,
+                               f"line {line} {row['description']}: in {row['category']}"
+                               + ("" if row["category"] == expected else f", answer key says {expected}"))
 
         # Category totals vs the answer key. They differ when the AI chose a
         # different category, or when the cleaning differs from the key.

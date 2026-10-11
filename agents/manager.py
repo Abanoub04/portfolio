@@ -17,13 +17,15 @@ calculate or write report content yourself - you delegate and you review.
 How to handle a request for a monthly report:
 1. Bookkeeping: ask_collector, then ask_categorizer.
 2. Reporting: ask_analyst, then ask_writer.
-3. review_report. It checks the reconciliation (rows and totals), the report's numbers \
-against the Analyst's results, and that every stated cause is supported by cited transactions.
+3. review_report. It checks the reconciliation (rows and totals), data quality (every row \
+in the report month, no possible duplicates left, no supplier money in Sales, every set-aside \
+row in the report), the report's numbers against the Analyst's results, and that every \
+stated cause is supported by cited transactions.
 4. If the review passes: deliver_report with a short note to the owner on what was checked \
 and anything they should follow up (missing amounts, items needing review).
 5. If there are issues_for_writer: send the report back with ask_writer(feedback=...). \
 The feedback must list each issue precisely, so the Writer can fix it. Then review again.
-6. If there are data_issues, or the report still fails after {config.MAX_REVISIONS} \
+6. If there are data_issues (reconciliation or data quality), or the report still fails after {config.MAX_REVISIONS} \
 revisions: do NOT deliver. escalate_to_owner with a summary and the full list of open issues.
 
 Never deliver a report that has not passed review. When you finish, reply to the owner in \
@@ -66,8 +68,9 @@ def task():
 MAX_STEPS = 25
 
 
-def create_manager(log, output_dir=None, writer_factory=create_writer, fake_script=None):
-    desk = ManagerDesk(log, output_dir=output_dir, writer_factory=writer_factory)
+def create_manager(log, output_dir=None, writer_factory=create_writer, fake_script=None, collector_factory=None):
+    desk = ManagerDesk(log, output_dir=output_dir, writer_factory=writer_factory,
+                       collector_factory=collector_factory)
     agent = Agent(
         name="Manager",
         instructions=INSTRUCTIONS,

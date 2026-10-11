@@ -126,6 +126,10 @@ OVER_BUDGET_THRESHOLD = 0.20
 LARGE_TRANSACTION_THRESHOLD = 20000
 LARGE_TRANSACTION_EXCLUDED_CATEGORIES = ["Salaries", "Rent"]
 
+# Two rows with the same counterparty and amount, at most this many days
+# apart, are set aside as possible duplicates (even if worded differently).
+DUPLICATE_WINDOW_DAYS = 3
+
 # The categories the Categorizer is allowed to use.
 CATEGORIES = [
     "Salaries",

@@ -48,7 +48,7 @@ class NormalRunTests(RunCheckTestCase):
     def test_test_mode_run_passes_all_hard_checks_with_no_differences(self):
         result = self.check(self.run_company())
         self.assertTrue(result["hard_passed"], format_run_check(result))
-        self.assertEqual(len(result["hard"]), 9)
+        self.assertEqual(len(result["hard"]), 13)
         self.assertEqual(self.differences(result), [])
 
 
@@ -100,7 +100,8 @@ class RealBugTests(RunCheckTestCase):
         self.assertFalse(result["hard_passed"])
         failed = [c["check"] for c in result["hard"] if not c["passed"]]
         self.assertIn("Rows reconcile", failed)
-        self.assertIn("Total expenses and sales match the answer key", failed)
+        self.assertIn("Totals reconcile", failed)
+        self.assertIn("Cleaning matches the answer key", failed)
 
 
 class EscalatedRunTests(RunCheckTestCase):

@@ -32,17 +32,23 @@ def last_tool_result(messages):
     return None, False
 
 
+def count(number, singular, plural):
+    """count(1, "row", "rows") -> "1 row"; count(3, ...) -> "3 rows"."""
+    return f"{number} {singular if number == 1 else plural}"
+
+
 def tool(name, **inputs):
     return {"tool": name, "input": inputs}
 
 
 class CategorizerPolicy:
     """Loads the data, applies the keyword rules, then decides each open row:
-    - keyword category with the wrong sign (e.g. a refund): try the keyword
-      category; if the sign rule refuses it, book a positive amount as Sales
-      (the only category that accepts one) and flag it for review
-    - several keywords matched: take the first, flag for review
-    - no keyword: Other (Sales if positive), flag for review"""
+    - no keyword, positive amount: try Sales (customer income); if the tool
+      refuses because it comes from a supplier, book it as a refund in Other
+    - no keyword, negative amount: Other
+    - several keywords matched: the first one
+    - any other case: Other
+    Every row it decides is flagged for review."""
 
     def __init__(self):
         self.stage = "load"
@@ -75,28 +81,25 @@ class CategorizerPolicy:
         line = row["source_line"]
         positive = Decimal(row["amount_czk"]) > 0
         why = row["why_unclear"]
+        unknown = f"Unknown supplier ({row['counterparty']}) - confirm the category."
 
-        if why.startswith("keyword says"):
-            keyword_category = why.split()[2].rstrip(",")
+        if why == "no keyword matched" and positive:
             return [
-                tool("set_category", source_line=line, category=keyword_category,
-                     reason=f"Matches the {keyword_category} keyword rule (looks like a refund)."),
-                tool("set_category", source_line=line, category="Sales" if positive else "Other",
-                     reason=f"{keyword_category} supplier with a positive amount - probably a refund.",
-                     needs_review=True,
-                     review_reason=f"Probably a refund of a {keyword_category} expense. Booked as Sales only "
-                                   f"because expense categories cannot hold a positive amount; it should "
-                                   f"reduce {keyword_category}."),
+                tool("set_category", source_line=line, category="Sales",
+                     reason="Positive amount with no keyword rule - looks like customer income.",
+                     needs_review=True, review_reason="Not recognised as an invoice - confirm it is income."),
+                tool("set_category", source_line=line, category="Other",
+                     reason="Positive amount from a supplier - a refund.",
+                     needs_review=True, review_reason=unknown),
             ]
         if why.startswith("keywords for several"):
             first = why.split("[")[1].split(",")[0].strip("'] ")
             return [tool("set_category", source_line=line, category=first,
                          reason=f"Several keyword rules matched; {first} looks most likely.",
                          needs_review=True, review_reason="Several categories possible - confirm.")]
-        return [tool("set_category", source_line=line, category="Sales" if positive else "Other",
+        return [tool("set_category", source_line=line, category="Other",
                      reason="Supplier not known to the keyword rules.",
-                     needs_review=True,
-                     review_reason=f"Unknown supplier ({row['counterparty']}) - confirm the category.")]
+                     needs_review=True, review_reason=unknown)]
 
 
 class WriterPolicy:
@@ -153,12 +156,18 @@ class WriterPolicy:
 
         follow_up = []
         if exceptions["probable_duplicates_count"]:
-            follow_up.append(f"confirm {exceptions['probable_duplicates_count']} probable duplicates "
+            follow_up.append(f"confirm {count(exceptions['probable_duplicates_count'], 'probable duplicate', 'probable duplicates')} "
                              f"against the bank statement")
+        if exceptions["possible_duplicates_count"]:
+            follow_up.append(f"confirm {count(exceptions['possible_duplicates_count'], 'possible duplicate', 'possible duplicates')} "
+                             f"against the bank statement")
+        if exceptions["outside_the_period_count"]:
+            follow_up.append(f"book {count(exceptions['outside_the_period_count'], 'row', 'rows')} from another "
+                             f"period in its own month")
         if exceptions["missing_amounts_count"]:
-            follow_up.append(f"obtain {exceptions['missing_amounts_count']} missing amounts")
+            follow_up.append(f"obtain {count(exceptions['missing_amounts_count'], 'missing amount', 'missing amounts')}")
         if exceptions["needs_review_count"]:
-            follow_up.append(f"check {exceptions['needs_review_count']} items needing review")
+            follow_up.append(f"check {count(exceptions['needs_review_count'], 'item', 'items')} needing review")
         exceptions_comment = ("Before the month is closed: " + ", ".join(follow_up) + "."
                               if follow_up else "No exceptions need follow-up.")
 

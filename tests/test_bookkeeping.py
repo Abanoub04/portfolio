@@ -53,6 +53,7 @@ class TempOutputTestCase(unittest.TestCase):
         cleaner = TransactionCleaner(source_file=source_file, output_dir=self.output_dir)
         cleaner.load_transactions()
         cleaner.standardize_dates()
+        cleaner.set_aside_outside_period()
         cleaner.flag_missing_amounts()
         cleaner.remove_duplicates()
         return cleaner, cleaner.save_cleaned_data()

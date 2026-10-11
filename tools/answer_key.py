@@ -19,7 +19,8 @@ ANSWER_KEYS = {
         "file": "README.md",
         "raw_rows": 61,
         "clean_rows": 54,
-        "probable_duplicates": {16: 15, 19: 18, 22: 21, 39: 38},   # duplicate line -> original line
+        "duplicates": {16: 15, 19: 18, 22: 21, 39: 38},            # duplicate line -> original line
+        "refunds": {},
         "missing_amounts": {8, 33, 41},                            # Figma, Courier, Taxi Berlin airport
         "outside_period": set(),
         # Rows the keyword rules can't decide, with the answer-key category.
@@ -31,11 +32,11 @@ ANSWER_KEYS = {
         "file": "answer_key_2026-10.md",
         "raw_rows": 47,
         "clean_rows": 45,
-        "probable_duplicates": {6: 5},          # Adobe, same charge with different wording
+        "duplicates": {6: 5},                   # Adobe, same charge, different wording (possible duplicate)
+        "refunds": {25: "Travel"},              # Refund - Hotel Berlin (reduces Travel)
         "missing_amounts": set(),
         "outside_period": {32},                 # printer toner dated 28.09.2026
-        "unclear_lines": {16: "Software",       # Taskly - new supplier, no keyword rule
-                          25: "Travel"},        # Refund - Hotel Berlin (reduces Travel)
+        "unclear_lines": {16: "Software"},      # Taskly - new supplier, no keyword rule
         "over_budget": [],
         "under_budget": ["Travel", "Marketing", "Other"],
     },
