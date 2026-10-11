@@ -105,8 +105,8 @@ class FullReportTests(unittest.TestCase):
         flagged = [item["category"] for item in self.analysis["unusual_items"]["categories_over_budget"]]
         self.assertEqual(flagged, ["Travel", "Marketing"])
         self.assertEqual(self.analysis["unusual_items"]["large_transactions"], [])
-        self.assertIn("- **Travel**: actual 25,546 vs budget 15,000 (+10,546, +70.3%)", self.report)
-        self.assertIn("- **Marketing**: actual 42,000 vs budget 25,000 (+17,000, +68.0%)", self.report)
+        self.assertIn("- **Travel**: actual 25,546 vs budget 15,000, CZK 10,546 (70.3%) over budget.", self.report)
+        self.assertIn("- **Marketing**: actual 42,000 vs budget 25,000, CZK 17,000 (68.0%) over budget.", self.report)
 
     def test_exceptions_match_answer_key(self):
         exceptions = self.report.split("## Exceptions", 1)[1]
@@ -142,7 +142,7 @@ class FullReportTests(unittest.TestCase):
         # Software is -29.8% against budget (answer key -30 %): more than 20% under.
         under = self.analysis["unusual_items"]["categories_under_budget"]
         self.assertEqual([item["category"] for item in under], ["Software"])
-        self.assertIn("- **Software**: actual 12,630 vs budget 18,000 (-5,370, -29.8%). "
+        self.assertIn("- **Software**: actual 12,630 vs budget 18,000, CZK 5,370 (29.8%) under budget. "
                       "Note: may indicate missing or late costs.", self.report)
 
     def test_missing_amounts_show_likely_category(self):

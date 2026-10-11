@@ -22,10 +22,11 @@ from tools.manager_tools import ManagerDesk
 from tools.review_checks import ReportReview
 
 # --- The planted mistakes ------------------------------------------------------
-# Wrong number: Travel's variance is +70.3%, the report says +68.0% (Marketing's).
+# Wrong number: Travel's variance is 70.3%, the report says 68.0% (Marketing's).
 # It passes the Writer's own check (68.0 IS in the analysis), so only the
 # Manager's review can catch it.
-WRONG_NUMBER_SUMMARY = SUMMARY.replace("Travel (+70.3%)", "Travel (+68.0%)")
+WRONG_NUMBER_SUMMARY = SUMMARY.replace("Travel (70.3%)", "Travel (68.0%)")
+assert WRONG_NUMBER_SUMMARY != SUMMARY, "the planted mistake must change the text"
 # Wrong claim: line 38 is the Berlin hotel (Travel), not a Prague trade fair.
 WRONG_CLAIM = " Marketing was also driven by the Prague trade fair (line 38)."
 
@@ -137,7 +138,7 @@ class ManagerCatchesPlantedMistakesTests(TempDirTestCase):
         self.log_text = self.log.path.read_text(encoding="utf-8")
 
     def test_wrong_number_is_caught_in_every_review(self):
-        self.assertEqual(self.notes.count("'Travel ... +68.0%' is wrong: Travel variance is 70.3%"), 3)
+        self.assertEqual(self.notes.count("'Travel ... 68.0%' is wrong: Travel variance is 70.3%"), 3)
 
     def test_wrong_claim_is_caught_in_every_review(self):
         self.assertEqual(self.notes.count("Cited line 38 is Travel, not Marketing"), 3)
@@ -156,7 +157,7 @@ class ManagerCatchesPlantedMistakesTests(TempDirTestCase):
         self.assertIn("Unsupported claim about a Prague trade fair", escalation)
         # The exact review findings are attached by code, not left to the Manager.
         self.assertIn("## Findings of the last review (review 3)", escalation)
-        self.assertIn("'Travel ... +68.0%' is wrong", escalation)
+        self.assertIn("'Travel ... 68.0%' is wrong", escalation)
         self.assertIn("'Prague' does not appear in the cited transactions", escalation)
 
 

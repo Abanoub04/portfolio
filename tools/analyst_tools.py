@@ -42,6 +42,16 @@ def display_amount(amount):
     return format_czk(-amount)
 
 
+def variance_phrase(variance, percent):
+    """Variance in plain words, without + or - signs."""
+    if variance == 0:
+        return "on budget"
+    direction = "over budget" if variance > 0 else "under budget"
+    if percent is None:
+        return f"CZK {format_czk(abs(variance))} {direction} (no budget set)"
+    return f"CZK {format_czk(abs(variance))} ({abs(percent)}%) {direction}"
+
+
 def format_percent(value):
     """Variance in % with one decimal and a sign: +68.0%. None -> "n/a"."""
     if value is None:
@@ -156,6 +166,11 @@ class ReportAnalyst:
             "budget_czk": format_czk(budget),
             "variance_czk": format_signed_czk(variance),
             "variance_percent": format_percent(percent),
+            # The same variance in words, without signs, for sentences:
+            # "CZK 33,514 (5.5%) under budget" - never "CZK -33,514 under budget".
+            "variance_phrase": variance_phrase(variance, percent),
+            "variance_direction": ("over budget" if variance > 0 else "under budget" if variance < 0
+                                   else "on budget"),
             # Kept unformatted too, so find_unusual_items can compare it.
             "_percent_value": None if percent is None else str(percent),
         }

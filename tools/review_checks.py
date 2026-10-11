@@ -40,9 +40,8 @@ from pathlib import Path
 import config
 from tools.csv_helpers import read_csv
 from tools.data_rules import in_report_month, is_supplier_row, possible_duplicate_pairs
-from tools.deliverable_checks import check_excel, check_slides, check_word
-from tools.writer_tools import deliverables_source_hash
-from tools.writer_tools import numbers_in
+from tools.deliverable_checks import check_excel, check_slides, check_word, slides_text, word_text
+from tools.writer_tools import deliverables_source_hash, numbers_in, sign_wording_problems
 
 # Words that state a cause. One extra word may sit in between, so that
 # "driven mainly by" or "linked directly to" are caught too.
@@ -123,6 +122,7 @@ class ReportReview:
         self.check_report_numbers()
         self.check_percentages()
         self.check_claims()
+        self.check_wording()
         self.check_deliverables()
 
         return {
@@ -302,6 +302,20 @@ class ReportReview:
                                           f"{percent_of[current]}% (in: \"{sentence}\")")
         self.record("Percentages belong to the right category", not issues,
                     f"{checked} percentages checked" if not issues else "; ".join(issues), "writer", issues)
+
+    def check_wording(self):
+        """No double negatives in any format: "CZK 33,514 (5.5%) under budget",
+        never "CZK -33,514 under budget" or "+3.0% over budget"."""
+        texts = {"report": self.report}
+        for kind, reader in [("docx", word_text), ("pptx", slides_text)]:
+            path = self.output_dir / config.DRAFT_DELIVERABLES[kind]
+            if path.exists():
+                texts[kind] = reader(path)
+        issues = [f"Double negative in the {name}: \"{phrase}\" - write it without the sign, e.g. "
+                  f"'CZK 33,514 (5.5%) under budget'"
+                  for name, text in texts.items() for phrase in sign_wording_problems(text)]
+        self.record("No signed amounts with over/under budget", not issues,
+                    f"checked: {', '.join(texts)}", "writer", issues)
 
     # --- d) deliverables --------------------------------------------------
 

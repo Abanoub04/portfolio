@@ -1,9 +1,9 @@
 """The Excel deliverable: report_YYYY-MM.xlsx.
 
 Sheets:
-  Summary       budget vs actual per category. Actual and budget are the
-                Analyst's figures; variance and variance % are Excel
-                formulas, so the client can see how they are calculated.
+  Summary       budget vs actual per category. Actual is a SUMIFS over the
+                Transactions sheet, so every total traces back to its rows;
+                budget is an input; variance and variance % are formulas.
   Transactions  every categorized row, with its review flag and reason
   Exceptions    every row set aside (duplicates, outside the period,
                 missing amounts, other issues)
@@ -28,10 +28,12 @@ DATE = "yyyy-mm-dd"
 HEADER_FONT = Font(name=FONT, bold=True, color="FFFFFF")
 HEADER_FILL = PatternFill("solid", fgColor="1D3352")
 BODY_FONT = Font(name=FONT)
-INPUT_FONT = Font(name=FONT, color="0000FF")          # blue: figures from the Analyst
+INPUT_FONT = Font(name=FONT, color="0000FF")          # blue: inputs (the budget)
+LINK_FONT = Font(name=FONT, color="008000")           # green: formulas reading another sheet
 BOLD_FONT = Font(name=FONT, bold=True)
 NOTE_FONT = Font(name=FONT, italic=True, color="555555")
 TOTAL_BORDER = Border(top=Side(style="thin"), bottom=Side(style="double"))
+TOP = Alignment(vertical="top")   # rows with wrapped text stay aligned
 
 SUMMARY_HEADERS = ["Category", "Actual (CZK)", "Budget (CZK)", "Variance (CZK)", "Variance %"]
 TRANSACTION_HEADERS = ["Line", "Date", "Description", "Counterparty", "Amount (CZK)", "Category",
@@ -56,6 +58,23 @@ def as_date(text):
         return text   # an unreadable date stays as it was
 
 
+def actual_formula(row, last_transaction_row):
+    """Actual spend of the category in column A: minus the sum of its rows in
+    Transactions (expenses are negative there, refunds positive)."""
+    return (f"=-SUMIFS(Transactions!$E$2:$E${last_transaction_row},"
+            f"Transactions!$F$2:$F${last_transaction_row},$A{row})")
+
+
+def sales_formula(last_transaction_row):
+    """Sales income: the sum of the Sales rows in Transactions (positive amounts)."""
+    return (f'=SUMIFS(Transactions!$E$2:$E${last_transaction_row},'
+            f'Transactions!$F$2:$F${last_transaction_row},"Sales")')
+
+
+def last_transaction_row(categorized_rows):
+    return max(2, len(categorized_rows) + 1)
+
+
 def variance_formula(row):
     return f"=B{row}-C{row}"
 
@@ -71,27 +90,42 @@ def write_header(sheet, headers):
         cell.fill = HEADER_FILL
         cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
     sheet.freeze_panes = "A2"   # the header row stays visible when scrolling
+    set_up_printing(sheet)
 
 
-def set_widths(sheet, minimum=8, maximum=55):
-    """Column width from the longest value in each column."""
+def set_up_printing(sheet):
+    """Landscape, one page wide (as many pages tall as needed), header row on every page."""
+    sheet.page_setup.orientation = "landscape"
+    sheet.page_setup.paperSize = sheet.PAPERSIZE_A4
+    sheet.page_setup.fitToWidth = 1
+    sheet.page_setup.fitToHeight = 0
+    sheet.sheet_properties.pageSetUpPr.fitToPage = True
+    sheet.print_title_rows = "1:1"
+
+
+def set_widths(sheet, minimum=8, maximum=36):
+    """Column width from the longest value in each column. Long text columns
+    are capped and wrap instead, so the sheet still prints one page wide."""
     for column_cells in sheet.columns:
         longest = max((len(str(cell.value)) for cell in column_cells if cell.value is not None), default=0)
         letter = get_column_letter(column_cells[0].column)
         sheet.column_dimensions[letter].width = max(minimum, min(maximum, longest + 3))
+        if longest + 3 > maximum:
+            for cell in column_cells[1:]:
+                cell.alignment = Alignment(wrap_text=True, vertical="top")
 
 
 def build_workbook(analysis, categorized_rows, exception_rows, path, month_label):
     workbook = Workbook()
     summary = workbook.active
     summary.title = "Summary"
-    write_summary(summary, analysis, month_label)
+    write_summary(summary, analysis, month_label, last_transaction_row(categorized_rows))
     write_transactions(workbook.create_sheet("Transactions"), categorized_rows)
     write_exceptions(workbook.create_sheet("Exceptions"), exception_rows)
     workbook.save(path)
 
 
-def write_summary(sheet, analysis, month_label):
+def write_summary(sheet, analysis, month_label, last_row):
     write_header(sheet, SUMMARY_HEADERS)
     categories = analysis["budget_vs_actual"]["categories"]
     first = 2
@@ -99,9 +133,10 @@ def write_summary(sheet, analysis, month_label):
 
     for row, item in enumerate(categories, start=first):
         sheet.cell(row=row, column=1, value=item["category"]).font = BODY_FONT
-        for column, key in [(2, "actual_czk"), (3, "budget_czk")]:
-            cell = sheet.cell(row=row, column=column, value=as_number(money(item[key])))
-            cell.font, cell.number_format = INPUT_FONT, CZK
+        cell = sheet.cell(row=row, column=2, value=actual_formula(row, last_row))
+        cell.font, cell.number_format = LINK_FONT, CZK
+        cell = sheet.cell(row=row, column=3, value=as_number(money(item["budget_czk"])))
+        cell.font, cell.number_format = INPUT_FONT, CZK
         cell = sheet.cell(row=row, column=4, value=variance_formula(row))
         cell.font, cell.number_format = BODY_FONT, CZK_SIGNED
         cell = sheet.cell(row=row, column=5, value=percent_formula(row))
@@ -119,18 +154,27 @@ def write_summary(sheet, analysis, month_label):
 
     sales_row = total + 2
     sheet.cell(row=sales_row, column=1, value="Sales income (side note)").font = BODY_FONT
-    cell = sheet.cell(row=sales_row, column=2, value=as_number(money(analysis["totals"]["sales_income_czk"])))
-    cell.font, cell.number_format = INPUT_FONT, CZK
+    cell = sheet.cell(row=sales_row, column=2, value=sales_formula(last_row))
+    cell.font, cell.number_format = LINK_FONT, CZK
 
-    notes = [f"{month_label}. Variance = Actual - Budget; + means over budget. Variance % = Variance / Budget.",
-             "Blue figures come from the Analyst's results; black cells are Excel formulas."]
+    notes = [f"{month_label}. Actual = minus the sum of the category's rows in Transactions (expenses are "
+             f"negative there, refunds positive). Variance = Actual - Budget; + means over budget. "
+             f"Variance % = Variance / Budget.",
+             "Blue = budget (input); green = formulas reading the Transactions sheet; black = formulas."]
     understated = analysis["exceptions"]["understated_categories"]
     if understated:
         parts = "; ".join(f"{category} (line {', '.join(str(n) for n in lines)})"
                           for category, lines in understated.items())
         notes.append(f"Actual understated - amount still missing for: {parts}. See the Exceptions sheet.")
     for offset, note in enumerate(notes, start=2):
-        sheet.cell(row=sales_row + offset, column=1, value=note).font = NOTE_FONT
+        # Each note is wrapped inside the table's width (columns A-E), so it
+        # doesn't run off to the right and widen the printed page.
+        row = sales_row + offset
+        cell = sheet.cell(row=row, column=1, value=note)
+        cell.font = NOTE_FONT
+        cell.alignment = Alignment(wrap_text=True, vertical="top")
+        sheet.merge_cells(start_row=row, start_column=1, end_row=row, end_column=5)
+        sheet.row_dimensions[row].height = 13 * (len(note) // 95 + 1)
 
     sheet.column_dimensions["A"].width = 26
     for letter in "BCDE":
@@ -146,6 +190,7 @@ def write_transactions(sheet, rows):
         for column, value in enumerate(values, start=1):
             cell = sheet.cell(row=index, column=column, value=value)
             cell.font = BODY_FONT
+            cell.alignment = TOP
         sheet.cell(row=index, column=2).number_format = DATE
         sheet.cell(row=index, column=5).number_format = CZK
     sheet.auto_filter.ref = f"A1:{get_column_letter(len(TRANSACTION_HEADERS))}{max(2, len(rows) + 1)}"
@@ -159,7 +204,9 @@ def write_exceptions(sheet, rows):
         values = [int(row["source_line"]), as_date(row["date"]), row["description"], row["counterparty"],
                   amount, row["issue"], row["detail"]]
         for column, value in enumerate(values, start=1):
-            sheet.cell(row=index, column=column, value=value).font = BODY_FONT
+            cell = sheet.cell(row=index, column=column, value=value)
+            cell.font = BODY_FONT
+            cell.alignment = TOP
         sheet.cell(row=index, column=2).number_format = DATE
         sheet.cell(row=index, column=5).number_format = CZK
     if rows:

@@ -84,9 +84,9 @@ few minutes and costs roughly **$1** (see below).
 | File | What it is |
 |---|---|
 | `report_2026-09.md` | The delivered report (only if the Manager's review passed) |
-| `report_2026-09.xlsx` | Excel: Summary (variance and variance % as formulas), Transactions, Exceptions |
+| `report_2026-09.xlsx` | Excel: Summary (actual = SUMIFS over Transactions; variance and variance % as formulas), Transactions, Exceptions; prints landscape, one page wide |
 | `report_2026-09.docx` | Word: the same report as a formatted document |
-| `report_2026-09.pptx` | PowerPoint: headline numbers, budget vs actual charts, unusual items, to-do |
+| `report_2026-09.pptx` | PowerPoint: 4-slide management deck with action titles – headline, budget vs actual, unusual items, actions before closing |
 | `review_notes_2026-09.md` | What the Manager checked, round by round |
 | `escalation_2026-09.md` | Only if the Manager refused to deliver – the open issues |
 | `run_check_2026-09.md` | Hard checks and soft differences from the answer key (below) |
@@ -104,8 +104,12 @@ files with Python from the Analyst's results and the Writer's checked text -
 the AI never types a number into a file. Before delivery the Manager opens
 each file again, reads the numbers back and compares them with the Analyst's
 results (Excel formulas are checked to be the expected formulas, and their
-results worked out from the values in the sheet). Any mismatch blocks
-delivery. The files keep `draft_` names until the review passes.
+results worked out from the rows in the Transactions sheet). Any mismatch
+blocks delivery. The files keep `draft_` names until the review passes.
+
+Variances are written without signs in sentences: "CZK 33,514 (5.5%) under
+budget", never "CZK -33,514 under budget". The Writer's save and the
+Manager's review both block signed "over/under budget" phrases in every format.
 
 ## Options
 

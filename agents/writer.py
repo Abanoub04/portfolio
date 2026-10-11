@@ -20,7 +20,10 @@ state a result (sales minus expenses). Mention sales income only as a short side
 
 Number rules (strict):
 - Copy every number exactly as it appears in the analysis, with the same formatting \
-(e.g. 42,000 and +68.0%).
+(e.g. 42,000 and 68.0%).
+- No double negatives: never put a + or - sign before an amount followed by "over/under \
+budget". Write "CZK 33,514 (5.5%) under budget" - each budget row in the analysis has this \
+wording ready as variance_phrase. save_report rejects signed "over/under budget" phrases.
 - Never calculate, add up, round or estimate a number. If a number you want is not in \
 the analysis, describe it in words instead.
 - save_report rejects any text containing a number that is not in the analysis. If that \
@@ -45,10 +48,10 @@ When done, reply with one sentence confirming the report and files were saved.""
 # citing any transaction ("linked to the Design Days event in Berlin"), which
 # the Manager's review catches and sends back.
 SUMMARY = (
-    "Total expenses for September 2026 were 622,894 CZK against a budget of 605,000 CZK, "
-    "which is +17,894 CZK (+3.0%) over budget. Travel (+70.3%) and Marketing (+68.0%) were "
-    "well over budget. Software was -29.8% under budget, partly because the Figma "
-    "subscription (line 8) has no amount yet. Side note: sales income was 371,000 CZK."
+    "Total expenses for September 2026 were 622,894 CZK against a budget of 605,000 CZK: "
+    "CZK 17,894 (3.0%) over budget. Travel (70.3%) and Marketing (68.0%) were well over "
+    "budget. Software was 29.8% under budget, partly because the Figma subscription (line 8) "
+    "has no amount yet. Side note: sales income was 371,000 CZK."
 )
 UNUSUAL_FIRST_DRAFT = (
     "Both overspends are linked to the Design Days event in Berlin. Travel was driven by the "

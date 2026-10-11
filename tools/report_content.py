@@ -91,16 +91,16 @@ def unusual_section(analysis, comment):
     for item in unusual["categories_over_budget"]:
         largest = ", ".join(f"{x['description']} {x['amount_czk']}" for x in item.get("largest_items", []))
         items.append([(item["category"], True),
-                      (f": actual {item['actual_czk']} vs budget {item['budget_czk']} "
-                       f"({item['variance_czk']}, {item['variance_percent']}). Largest items: {largest}.", False)])
+                      (f": actual {item['actual_czk']} vs budget {item['budget_czk']}, "
+                       f"{item['variance_phrase']}. Largest items: {largest}.", False)])
     blocks.append(bullets(items or [[("None.", False)]]))
 
     blocks.append(paragraph((f"Categories more than {threshold} under budget", True)))
     items = []
     for item in unusual["categories_under_budget"]:
         items.append([(item["category"], True),
-                      (f": actual {item['actual_czk']} vs budget {item['budget_czk']} "
-                       f"({item['variance_czk']}, {item['variance_percent']}). Note: {item['note']}.", False)])
+                      (f": actual {item['actual_czk']} vs budget {item['budget_czk']}, "
+                       f"{item['variance_phrase']}. Note: {item['note']}.", False)])
     blocks.append(bullets(items or [[("None.", False)]]))
 
     excluded = " and ".join(unusual["large_transactions_excluding"])
