@@ -84,9 +84,9 @@ few minutes and costs roughly **$1** (see below).
 | File | What it is |
 |---|---|
 | `report_2026-09.md` | The delivered report (only if the Manager's review passed) |
-| `report_2026-09.xlsx` | Excel: Summary (actual = SUMIFS over Transactions; variance and variance % as formulas), Transactions, Exceptions; prints landscape, one page wide |
+| `report_2026-09.xlsx` | Excel: Summary (actual = SUMIFS over whole Transactions columns, so added rows count; variance and variance % as formulas), Transactions, Exceptions; prints landscape, one page wide |
 | `report_2026-09.docx` | Word: the same report as a formatted document |
-| `report_2026-09.pptx` | PowerPoint: 4-slide management deck with action titles – headline, budget vs actual, unusual items, actions before closing |
+| `report_2026-09.pptx` | PowerPoint: 4-slide management deck with action titles – headline numbers, budget vs actual, unusual items (refunds named in their category), actions before closing |
 | `review_notes_2026-09.md` | What the Manager checked, round by round |
 | `escalation_2026-09.md` | Only if the Manager refused to deliver – the open issues |
 | `run_check_2026-09.md` | Hard checks and soft differences from the answer key (below) |
