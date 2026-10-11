@@ -97,7 +97,7 @@ ledgermind/
 - Follow-ups after the real run (PR #6, first round): probable-duplicate labels,
   --test / --month switches, October 2026 test month, simulated AI for months
   other than September (agents/simulated_ai.py)
-- Current: October gaps fixed – built, waiting for Abanoub's go-ahead
+- October gaps fixed (PR #6) – done; real October run: 13/13 hard, 0 soft
   - Collector: possible duplicates (same counterparty + amount within
     DUPLICATE_WINDOW_DAYS, any wording) and cut-off (rows outside the report
     month) are set aside and always listed in the report
@@ -107,7 +107,15 @@ ledgermind/
     rules in tools/data_rules.py): rows in the report month, no possible
     duplicates, no supplier money in Sales, every set-aside row in the report.
     A failure is a data issue: delivery is blocked, the Manager escalates.
-  - Both test months pass all 13 hard checks in test mode
+- Current: deliverable files – built, waiting for Abanoub's go-ahead
+  - Writer tool create_deliverables builds draft_report_YYYY-MM.xlsx/.docx/.pptx
+    with Python (tools/excel_report.py, word_report.py, slides_report.py) from
+    the analysis and the saved draft text; Markdown and Word share one content
+    model (tools/report_content.py)
+  - Manager review reads every file back (tools/deliverable_checks.py); a
+    missing/out-of-date file goes back to the Writer, a wrong number is a data
+    issue (no delivery, escalate). deliver_report copies the files to report_*.
+  - Both test months: 15/15 hard checks, files delivered
 - API key: ANTHROPIC_API_KEY from the environment or a .env file (config.py
   loads it; .env is gitignored; .env.example is the template). The test
   suite forces test mode (tests/__init__.py), so tests never call the API.

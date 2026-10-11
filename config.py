@@ -69,13 +69,18 @@ BUDGET_FILE = DATA_DIR / "budget.csv"   # the monthly budget, the same every mon
 TRANSACTIONS_FILES = {"2026-09": "transactions.csv"}
 
 
+# The client deliverables made next to the Markdown report.
+DELIVERABLE_TYPES = ["xlsx", "docx", "pptx"]
+
+
 def set_month(month):
     """Choose the month to report on. Sets the input file and the names of
     all files the agents write, so months never overwrite each other."""
     global REPORT_MONTH, TRANSACTIONS_FILE
     global CLEAN_FILE_NAME, EXCEPTIONS_FILE_NAME, CATEGORIZED_FILE_NAME
-    global ANALYSIS_FILE_NAME, DRAFT_REPORT_FILE_NAME
+    global ANALYSIS_FILE_NAME, DRAFT_REPORT_FILE_NAME, DRAFT_TEXTS_FILE_NAME
     global REPORT_FILE_NAME, REVIEW_NOTES_FILE_NAME, ESCALATION_FILE_NAME, RUN_CHECK_FILE_NAME
+    global DRAFT_DELIVERABLES, REPORT_DELIVERABLES, DELIVERABLES_MANIFEST_FILE_NAME
 
     REPORT_MONTH = month
     TRANSACTIONS_FILE = DATA_DIR / TRANSACTIONS_FILES.get(month, f"transactions_{month}.csv")
@@ -87,11 +92,17 @@ def set_month(month):
     # Reporting department
     ANALYSIS_FILE_NAME = f"analysis_{month}.json"           # Analyst: all the numbers
     DRAFT_REPORT_FILE_NAME = f"draft_report_{month}.md"     # Writer: draft for review
+    DRAFT_TEXTS_FILE_NAME = f"draft_texts_{month}.json"     # Writer: the text parts of the draft
     # Manager
     REPORT_FILE_NAME = f"report_{month}.md"                 # the delivered report
     REVIEW_NOTES_FILE_NAME = f"review_notes_{month}.md"     # what was checked
     ESCALATION_FILE_NAME = f"escalation_{month}.md"         # only if not delivered
     RUN_CHECK_FILE_NAME = f"run_check_{month}.md"           # hard checks + soft differences
+    # Deliverable files: built by the Writer's tools as drafts; the Manager
+    # copies them to the final names only after its review passed.
+    DRAFT_DELIVERABLES = {kind: f"draft_report_{month}.{kind}" for kind in DELIVERABLE_TYPES}
+    REPORT_DELIVERABLES = {kind: f"report_{month}.{kind}" for kind in DELIVERABLE_TYPES}
+    DELIVERABLES_MANIFEST_FILE_NAME = f"draft_deliverables_{month}.json"
 
 
 def month_name():

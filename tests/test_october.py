@@ -73,7 +73,7 @@ class OctoberRunTests(OctoberTestCase):
     def test_all_hard_checks_pass_and_report_is_delivered(self):
         failed = [c["check"] for c in self.check["hard"] if not c["passed"]]
         self.assertEqual(failed, [])
-        self.assertEqual(len(self.check["hard"]), 13)
+        self.assertEqual(len(self.check["hard"]), 15)
         self.assertEqual(self.manager.desk.finished, "delivered")
 
     def test_only_soft_difference_is_the_ai_choice_for_taskly(self):
@@ -202,7 +202,9 @@ class DataQualityCheckTests(OctoberTestCase):
         self.replace(config.CATEGORIZED_FILE_NAME, "3100.00,Travel,", "3100.00,Sales,")
         failed, result = self.failed()
         self.assertIn("No supplier money counted as Sales", failed)
-        self.assertTrue(all(i["owner"] == "data" for i in result["issues"]))
+        supplier_issues = [i for i in result["issues"] if i["check"] == "No supplier money counted as Sales"]
+        self.assertTrue(supplier_issues)
+        self.assertTrue(all(i["owner"] == "data" for i in supplier_issues))
 
     def test_set_aside_row_missing_from_report_is_caught(self):
         self.replace(config.DRAFT_REPORT_FILE_NAME, "| 32 | 2026-09-28 |", "| removed | 2026-09-28 |")

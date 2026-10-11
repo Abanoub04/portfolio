@@ -115,11 +115,14 @@ class WriterPolicy:
             self.stage = "write"
             return tool("read_analysis")
         if self.stage == "write":
-            self.stage = "done"
+            self.stage = "files"
             return tool("save_report", **self.texts(result))
+        if self.stage == "files" and not is_error:
+            self.stage = "done"
+            return tool("create_deliverables")
         if is_error:
-            return {"text": f"(test mode, simulated AI) The report was not saved: {result}"}
-        return {"text": "(test mode, simulated AI) Draft report saved."}
+            return {"text": f"(test mode, simulated AI) Stopped: {result}"}
+        return {"text": "(test mode, simulated AI) Draft report and files saved."}
 
     def texts(self, analysis):
         budget = analysis["budget_vs_actual"]

@@ -48,7 +48,7 @@ class NormalRunTests(RunCheckTestCase):
     def test_test_mode_run_passes_all_hard_checks_with_no_differences(self):
         result = self.check(self.run_company())
         self.assertTrue(result["hard_passed"], format_run_check(result))
-        self.assertEqual(len(result["hard"]), 13)
+        self.assertEqual(len(result["hard"]), 15)
         self.assertEqual(self.differences(result), [])
 
 

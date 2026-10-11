@@ -33,7 +33,11 @@ Use the source lines listed in the analysis.
 - Only name things (places, events, suppliers) that appear in the cited transactions.
 - If you cannot support a cause with specific transactions, do not state it.
 
-When done, reply with one sentence confirming the report was saved."""
+3. After every successful save_report, call create_deliverables. It builds the Excel, Word \
+and PowerPoint files for the client from the analysis and your saved text - Python writes \
+every number in them, you never type numbers into a file.
+
+When done, reply with one sentence confirming the report and files were saved."""
 
 # --- Test mode (no API key) ---------------------------------------------------
 # First draft: the first save contains an invented, rounded number on purpose
@@ -72,14 +76,16 @@ FAKE_SCRIPT_FIRST_DRAFT = [
         "exceptions_comment": EXCEPTIONS}},
     {"tool": "save_report", "input": {
         "summary": SUMMARY, "unusual_items_comment": UNUSUAL_FIRST_DRAFT, "exceptions_comment": EXCEPTIONS}},
-    {"text": "(test mode) Draft report saved."},
+    {"tool": "create_deliverables"},
+    {"text": "(test mode) Draft report and files saved."},
 ]
 
 FAKE_SCRIPT_REVISED = [
     {"tool": "read_analysis"},
     {"tool": "save_report", "input": {
         "summary": SUMMARY, "unusual_items_comment": UNUSUAL_REVISED, "exceptions_comment": EXCEPTIONS}},
-    {"text": "(test mode) Revised report saved - every cause now cites its transactions."},
+    {"tool": "create_deliverables"},
+    {"text": "(test mode) Revised report and files saved - every cause now cites its transactions."},
 ]
 
 

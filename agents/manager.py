@@ -19,10 +19,12 @@ How to handle a request for a monthly report:
 2. Reporting: ask_analyst, then ask_writer.
 3. review_report. It checks the reconciliation (rows and totals), data quality (every row \
 in the report month, no possible duplicates left, no supplier money in Sales, every set-aside \
-row in the report), the report's numbers against the Analyst's results, and that every \
-stated cause is supported by cited transactions.
+row in the report), the report's numbers against the Analyst's results, that every \
+stated cause is supported by cited transactions, and the Excel, Word and PowerPoint files \
+(present, up to date, and every number read back from them matches the Analyst's results).
 4. If the review passes: deliver_report with a short note to the owner on what was checked \
-and anything they should follow up (missing amounts, items needing review).
+and anything they should follow up (missing amounts, items needing review). It delivers the \
+report together with its Excel, Word and PowerPoint files.
 5. If there are issues_for_writer: send the report back with ask_writer(feedback=...). \
 The feedback must list each issue precisely, so the Writer can fix it. Then review again.
 6. If there are data_issues (reconciliation or data quality), or the report still fails after {config.MAX_REVISIONS} \

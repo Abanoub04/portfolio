@@ -109,6 +109,9 @@ def main():
     (out / config.RUN_CHECK_FILE_NAME).write_text(check_text, encoding="utf-8")
     show("RUN CHECK", out / config.RUN_CHECK_FILE_NAME)
 
+    if the_manager.desk.finished == "delivered":
+        files = [config.REPORT_FILE_NAME] + list(config.REPORT_DELIVERABLES.values())
+        print("Delivered files: " + ", ".join(files))
     print("=" * 70)
     print(f"Manager: {answer}")
     print(f"Files in {out.name}/, full log: {log.path}")

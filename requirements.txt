@@ -1,2 +1,7 @@
-# Anthropic Python SDK - used from Stage 2 (agent engine) onward.
+# Anthropic Python SDK - the agents' AI model.
 anthropic>=1.13,<2
+
+# Deliverable files (Excel, Word, PowerPoint), written by the Writer's tools.
+openpyxl>=3.1,<4
+python-docx>=1.1,<2
+python-pptx>=1.0,<2
