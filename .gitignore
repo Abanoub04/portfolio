@@ -4,8 +4,10 @@ __pycache__/
 .venv/
 venv/
 
-# Secrets - never commit API keys
+# Secrets - never commit API keys (.env.example is the safe template)
 .env
+.env.*
+!.env.example
 
 # Generated at run time (the folders themselves are kept via .gitkeep)
 logs/*

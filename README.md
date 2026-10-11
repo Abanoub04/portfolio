@@ -1,1 +1,142 @@
-# portfolio
+# LedgerMind
+
+A small accounting firm run entirely by AI agents. It takes one month of
+(fake) business transactions and delivers a monthly expense report.
+
+- **Manager** – talks to you, delegates, reviews the report, delivers or escalates
+- **Bookkeeping** – Collector (cleans the data), Categorizer (assigns categories)
+- **Reporting** – Analyst (all calculations), Writer (writes the report)
+
+All numbers are calculated by Python tools, never by the AI. See `CLAUDE.md`
+for the full brief and `docs/ledgermind-mindmap.html` for an overview.
+
+## Run it on your own computer
+
+You need **Python 3.10 or newer** and **git**. Check with `python --version`
+(on macOS/Linux it may be `python3`).
+
+### 1. Clone the project
+
+```
+git clone https://github.com/Abanoub04/portfolio.git
+cd portfolio
+```
+
+### 2. Create a virtual environment and install
+
+A virtual environment keeps this project's packages separate from the rest
+of your computer.
+
+macOS / Linux:
+```
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+```
+
+Windows (PowerShell):
+```
+python -m venv .venv
+.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+```
+
+### 3. Check that everything works – free, no key needed
+
+```
+python -m unittest
+```
+
+All tests should pass (`OK`). The tests always use a fake model, even after
+you add your key, so they never cost anything.
+
+You can also run the whole company in test mode:
+```
+python main.py
+```
+
+### 4. Add your API key
+
+Get a key at https://platform.claude.com (API keys). Then copy the template:
+
+macOS / Linux: `cp .env.example .env`
+Windows: `copy .env.example .env`
+
+Open `.env` in a text editor and replace `your-key-here` with your key:
+```
+ANTHROPIC_API_KEY=sk-ant-...
+```
+
+`.env` is listed in `.gitignore`, so your key is never committed. Never put
+the key in any other file.
+
+### 5. Run it for real
+
+```
+python main.py
+```
+
+The first line should say `Mode: REAL model claude-opus-5-5`. A run takes a
+few minutes and costs roughly **$1** (see below).
+
+### 6. Read the results (in `output/`)
+
+| File | What it is |
+|---|---|
+| `report_2026-09.md` | The delivered report (only if the Manager's review passed) |
+| `review_notes_2026-09.md` | What the Manager checked, round by round |
+| `escalation_2026-09.md` | Only if the Manager refused to deliver – the open issues |
+| `run_check_2026-09.md` | Hard checks and soft differences from the answer key (below) |
+| `exceptions.csv` | Duplicates and missing amounts that were set aside |
+| `transactions_categorized.csv` | Every transaction with its category and reason |
+
+The full log of who did what is in `logs/`.
+
+## Hard checks and soft differences
+
+With the real model, the AI's choices can differ from run to run. After
+every run, `main.py` writes `output/run_check_2026-09.md` with two parts:
+
+**Hard checks – must always pass.** These test what Python guarantees,
+whatever the AI decides: cleaning matches the answer key (61 rows,
+54 clean, duplicates and missing amounts on the right lines), every
+transaction has exactly one valid category, the AI only decided the
+3 unclear rows, rows and totals reconcile with the clean data, total
+expenses (622,894) and sales (371,000) match, and every number in the
+report comes from the Analyst. If one fails, it is a bug: `main.py` says
+so and exits with an error code.
+
+**Soft differences – reported, never failed.** These are the AI's
+judgement calls compared with the answer key in `data/README.md`: the
+category it chose for the ALBERT, ALZA and transfer rows, the category
+totals that change as a result, which categories get flagged over or under
+budget, which rows it marked for review, how many revisions the Writer
+needed, and whether the report was delivered or escalated.
+
+Example: if the AI puts the ALZA payment (4,390 CZK) in Software instead of
+Other, the run check shows Software +4,390 and Other −4,390 against the
+answer key, and Software is no longer flagged as under budget. The hard
+checks still pass, because the totals still reconcile.
+
+## Cost
+
+Model: `claude-opus-5-5` at $4 per million input tokens and $20 per million
+output tokens (thinking counts as output). One full run makes about 35–45
+model calls across the five agents. Measured from the test-mode run, they
+send about 55,000 tokens of input; a real run adds the AI's own thinking
+and text. Estimate for one run: **about $1, typically $0.75–$2**. A run
+where the Writer needs two revisions costs more than one that passes first
+time.
+
+To spend less, change `MODEL` in `config.py` to `claude-sonnet-5-5`
+(about half the price). Check actual usage in the Claude Console.
+
+## Common problems
+
+| Message | What to do |
+|---|---|
+| `Mode: TEST` although you added a key | The `.env` file must be in the project folder, next to `main.py` |
+| `still contains the placeholder` | Replace `your-key-here` in `.env` with your real key |
+| `The API key was rejected` | Copy the key again – no spaces or quotes around it |
+| `Rate limit or credit limit reached` | Wait a minute, or add credit in the Console |
+| `Could not reach the API` | Check your internet connection or proxy |

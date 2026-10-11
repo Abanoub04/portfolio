@@ -22,31 +22,15 @@ from agents.categorizer import create_categorizer
 from agents.collector import create_collector
 from agents.writer import create_writer
 from tools.analyst_tools import ReportAnalyst
+from tools.answer_key import read_totals_table
 from tools.categorizer_tools import TransactionCategorizer
 from tools.collector_tools import TransactionCleaner
 from tools.csv_helpers import write_csv
 from tools.writer_tools import ReportWriter, numbers_in
 
 
-def read_answer_key():
-    """Read the answer-key table from data/README.md.
-    Returns {name: {"actual": Decimal, "budget": Decimal or None, "percent": int or None}}."""
-    text = (config.DATA_DIR / "README.md").read_text(encoding="utf-8")
-    key_section = text.split("## Answer key", 1)[1]
-
-    def number(cell):
-        cell = cell.replace("*", "").replace(" ", "").replace("−", "-").replace("%", "")
-        match = re.match(r"^[+-]?\d+", cell)
-        return Decimal(match.group()) if match else None
-
-    key = {}
-    for line in key_section.splitlines():
-        cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
-        if len(cells) != 4 or cells[0] in ("Category", "---") or set(cells[0]) <= set("-"):
-            continue
-        name = cells[0].replace("*", "").strip()
-        key[name] = {"actual": number(cells[1]), "budget": number(cells[2]), "percent": number(cells[3])}
-    return key
+# The answer key is read from data/README.md by tools/answer_key.py.
+read_answer_key = read_totals_table
 
 
 def report_table_rows(report):
