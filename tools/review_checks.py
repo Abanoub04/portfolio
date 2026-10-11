@@ -84,7 +84,7 @@ class ReportReview:
             detail = f"{len(issues)} issue(s), see below"
         self.checks.append({"check": check, "passed": passed, "detail": detail})
         for issue in issues:
-            self.issues.append({"owner": owner, "issue": issue})
+            self.issues.append({"owner": owner, "issue": issue, "check": check})
 
     def run(self):
         """Run all checks. Returns {"passed", "checks", "issues"}."""

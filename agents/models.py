@@ -17,9 +17,19 @@ from dataclasses import dataclass, field
 import config
 
 
+# The placeholder from .env.example - not a real key.
+PLACEHOLDER_KEY = "your-key-here"
+
+
 def using_real_model():
     """True when an API key is available, so the real model can be used."""
-    return bool(os.environ.get("ANTHROPIC_API_KEY"))
+    key = os.environ.get("ANTHROPIC_API_KEY", "").strip()
+    return bool(key) and key != PLACEHOLDER_KEY
+
+
+def placeholder_key_set():
+    """True when .env was copied but the placeholder was not replaced."""
+    return os.environ.get("ANTHROPIC_API_KEY", "").strip() == PLACEHOLDER_KEY
 
 
 def create_model(fake_script=None):
@@ -32,6 +42,11 @@ def create_model(fake_script=None):
 # ---------------------------------------------------------------------------
 # The real model
 # ---------------------------------------------------------------------------
+
+# Models that accept the automatic refusal fallback (see respond() below).
+# Other models (e.g. Haiku) don't, so the setting is simply left out for them.
+FALLBACK_MODELS = {"claude-opus-5-5", "claude-opus-5", "claude-sonnet-5-5", "claude-fable-5-1"}
+
 
 class RealModel:
     name = config.MODEL
@@ -46,18 +61,20 @@ class RealModel:
 
     def respond(self, instructions, messages, tools):
         """Send the conversation so far to Claude and return its answer."""
-        return self.client.beta.messages.create(
-            model=config.MODEL,
-            max_tokens=config.MAX_TOKENS,
-            system=instructions,
-            messages=messages,
-            tools=tools,
-            output_config={"effort": config.EFFORT},
+        request = {
+            "model": config.MODEL,
+            "max_tokens": config.MAX_TOKENS,
+            "system": instructions,
+            "messages": messages,
+            "tools": tools,
+            "output_config": {"effort": config.EFFORT},
+        }
+        if config.MODEL in FALLBACK_MODELS:
             # If Claude declines a request for safety reasons, the API
             # automatically retries it on a suitable fallback model.
-            betas=["server-side-fallback-2026-07-01"],
-            fallbacks="default",
-        )
+            request["betas"] = ["server-side-fallback-2026-07-01"]
+            request["fallbacks"] = "default"
+        return self.client.beta.messages.create(**request)
 
 
 # ---------------------------------------------------------------------------

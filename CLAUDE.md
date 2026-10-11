@@ -91,7 +91,15 @@ ledgermind/
 - Stage 2 (Agent engine) – done
 - Stage 3 (Bookkeeping department) – done
 - Stage 4 (Reporting department) – done
-- Current stage: 5 (Manager) – built, waiting for Abanoub's go-ahead
+- Stage 5 (Manager) – done
+- Current stage: 6 (Full run) – prepared, NOT yet run with a real key;
+  waiting for Abanoub to run it on his computer (steps in README.md)
+- API key: ANTHROPIC_API_KEY from the environment or a .env file (config.py
+  loads it; .env is gitignored; .env.example is the template). The test
+  suite forces test mode (tests/__init__.py), so tests never call the API.
+- After each run main.py writes output/run_check_YYYY-MM.md: HARD checks
+  (must pass, exit code 1 if not) and SOFT differences vs the answer key
+  (tools/run_checks.py, answer key in tools/answer_key.py).
 - Generated (not committed) in output/: transactions_clean.csv, exceptions.csv,
   transactions_categorized.csv, analysis_YYYY-MM.json (Analyst),
   draft_report_YYYY-MM.md (Writer), report_YYYY-MM.md (only after the

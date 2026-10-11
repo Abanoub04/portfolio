@@ -2,30 +2,73 @@
 
 The owner's request goes to the Manager. The Manager runs Bookkeeping and
 Reporting, reviews the report, and either delivers it or escalates.
+Afterwards a run check reports HARD checks (must always pass) and SOFT
+differences from the answer key (the AI's judgement calls).
 
-Without ANTHROPIC_API_KEY set, the agents run in test mode with a fake model.
+Without ANTHROPIC_API_KEY set (in the environment or in .env), the agents
+run in test mode with a fake model and nothing is sent to the API.
 """
+
+import sys
 
 import config
 from agents import manager
 from agents.action_log import ActionLog
-from agents.models import using_real_model
+from agents.base_agent import AgentError
+from agents.models import placeholder_key_set, using_real_model
+from tools.run_checks import RunCheck, format_run_check
 
 
 def show(title, path):
+    if not path.exists():
+        return
     print("\n" + "=" * 30 + f" {title} " + "=" * 30 + "\n")
     print(path.read_text(encoding="utf-8"))
 
 
+def explain_api_error(error):
+    """A plain-English message for the most common API problems."""
+    import anthropic
+    if isinstance(error, anthropic.AuthenticationError):
+        return "The API key was rejected. Check ANTHROPIC_API_KEY in your .env file."
+    if isinstance(error, anthropic.PermissionDeniedError):
+        return "The API key has no access to this model. Check your account or change MODEL in config.py."
+    if isinstance(error, anthropic.NotFoundError):
+        return f"Model '{config.MODEL}' was not found. Check MODEL in config.py."
+    if isinstance(error, anthropic.RateLimitError):
+        return "Rate limit or credit limit reached. Wait a minute, or check your credit balance."
+    if isinstance(error, anthropic.APIConnectionError):
+        return "Could not reach the API. Check your internet connection."
+    if isinstance(error, anthropic.APIStatusError):
+        return f"The API returned an error ({error.status_code}): {error.message}"
+    return None
+
+
 def main():
+    if placeholder_key_set():
+        print("Your .env still contains the placeholder 'your-key-here'. Put your real key in .env,\n"
+              "or remove the line to run in test mode.")
+        return 2
+
     if using_real_model():
-        print("Mode: REAL model (ANTHROPIC_API_KEY is set)\n")
+        print(f"Mode: REAL model {config.MODEL} (ANTHROPIC_API_KEY is set) - this run uses API credit\n")
     else:
         print("Mode: TEST - fake model, no API calls (ANTHROPIC_API_KEY is not set)\n")
 
     log = ActionLog()
     the_manager = manager.create_manager(log)
-    answer = the_manager.run(manager.TASK)
+    try:
+        answer = the_manager.run(manager.TASK)
+    except AgentError as error:
+        # e.g. the safety brake (too many steps) or a refused/cut-off answer
+        print(f"\nThe run stopped: {error}\nFull log: {log.path}")
+        return 1
+    except Exception as error:
+        message = explain_api_error(error) if using_real_model() else None
+        if message is None:
+            raise
+        print(f"\nThe run stopped: {message}\nFull log: {log.path}")
+        return 1
 
     out = config.OUTPUT_DIR
     if the_manager.desk.finished == "delivered":
@@ -34,10 +77,19 @@ def main():
         show("ESCALATION", out / config.ESCALATION_FILE_NAME)
     show("REVIEW NOTES", out / config.REVIEW_NOTES_FILE_NAME)
 
+    check = RunCheck(outcome=the_manager.desk.finished, writer_runs=the_manager.desk.writer_runs).run()
+    check_text = format_run_check(check)
+    (out / config.RUN_CHECK_FILE_NAME).write_text(check_text, encoding="utf-8")
+    show("RUN CHECK", out / config.RUN_CHECK_FILE_NAME)
+
     print("=" * 70)
     print(f"Manager: {answer}")
-    print(f"Full log: {log.path}")
+    print(f"Files in {out.name}/, full log: {log.path}")
+    if not check["hard_passed"]:
+        print("A HARD check failed - this is a bug, not an AI judgement call. See the run check above.")
+        return 1
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
