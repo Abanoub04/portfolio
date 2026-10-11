@@ -43,7 +43,16 @@ CATEGORIZED_FILE_NAME = "transactions_categorized.csv"  # Categorizer
 
 # Files produced by the Reporting department (written to output/).
 ANALYSIS_FILE_NAME = f"analysis_{REPORT_MONTH}.json"  # Analyst: all the numbers
-REPORT_FILE_NAME = f"report_{REPORT_MONTH}.md"        # Writer: the final report
+DRAFT_REPORT_FILE_NAME = f"draft_report_{REPORT_MONTH}.md"  # Writer: draft for review
+
+# Files produced by the Manager (written to output/).
+REPORT_FILE_NAME = f"report_{REPORT_MONTH}.md"              # the delivered report
+REVIEW_NOTES_FILE_NAME = f"review_notes_{REPORT_MONTH}.md"  # what was checked
+ESCALATION_FILE_NAME = f"escalation_{REPORT_MONTH}.md"      # only if not delivered
+
+# How many times the Manager may send the report back to the Writer
+# before it must stop and escalate to the owner.
+MAX_REVISIONS = 2
 
 # --- Date formats ---------------------------------------------------------
 # The date formats the Collector understands, and how each is named.

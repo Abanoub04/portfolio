@@ -17,6 +17,7 @@ from decimal import Decimal, ROUND_HALF_UP
 from pathlib import Path
 
 import config
+from tools.categorizer_tools import keyword_matches
 from tools.csv_helpers import read_csv
 
 
@@ -111,7 +112,6 @@ class ReportAnalyst:
             "expense_transactions": len(self.transactions) - sales_count,
             "sales_income_czk": format_czk(sales),
             "sales_transactions": sales_count,
-            "result_czk": format_signed_czk(sales - total_expenses),
         }
         return self.results["totals"]
 
@@ -153,8 +153,8 @@ class ReportAnalyst:
         }
 
     def find_unusual_items(self):
-        """Categories more than the threshold over budget, spend with no budget,
-        and single expenses above the large-transaction threshold
+        """Categories more than the threshold over or under budget, spend with
+        no budget, and single expenses above the large-transaction threshold
         (outside the excluded categories)."""
         self.require_loaded()
         if "budget_vs_actual" not in self.results:
@@ -162,13 +162,20 @@ class ReportAnalyst:
 
         threshold_percent = Decimal(str(config.OVER_BUDGET_THRESHOLD * 100))
         over_budget = []
+        under_budget = []
         for row in self.results["budget_vs_actual"]["categories"]:
             if row["_percent_value"] is None:
                 if row["actual_czk"] != "0":
                     over_budget.append({**self.public(row), "why": "spend with no budget"})
                 continue
-            if Decimal(row["_percent_value"]) > threshold_percent:
+            percent = Decimal(row["_percent_value"])
+            if percent > threshold_percent:
                 over_budget.append({**self.public(row), "why": f"more than {threshold_percent:.0f}% over budget"})
+            elif percent < -threshold_percent:
+                # Spending far below budget is not automatically good news:
+                # costs may be missing or booked late.
+                under_budget.append({**self.public(row), "why": f"more than {threshold_percent:.0f}% under budget",
+                                     "note": "may indicate missing or late costs"})
 
         # For each flagged category, its 3 largest expenses, so the report
         # can explain what drove the overspend.
@@ -199,6 +206,7 @@ class ReportAnalyst:
         self.results["unusual_items"] = {
             "over_budget_threshold": f"{threshold_percent:.0f}%",
             "categories_over_budget": over_budget,
+            "categories_under_budget": under_budget,
             "large_transaction_threshold_czk": format_czk(limit),
             "large_transactions_excluding": config.LARGE_TRANSACTION_EXCLUDED_CATEGORIES,
             "large_transactions": large,
@@ -225,8 +233,14 @@ class ReportAnalyst:
                                    "description": row["description"], "amount_czk": format_czk(amount),
                                    "detail": row["detail"]})
             elif row["issue"] == "missing amount":
+                # Which category the row would most likely fall into, using the
+                # Categorizer's keyword rules. Its actual is understated until
+                # the amount is known.
+                matches = keyword_matches(row["description"])
+                likely = matches[0] if len(matches) == 1 else "unclear"
                 missing.append({"source_line": int(row["source_line"]), "date": row["date"],
-                                "description": row["description"], "counterparty": row["counterparty"]})
+                                "description": row["description"], "counterparty": row["counterparty"],
+                                "likely_category": likely})
             else:
                 other_issues.append({"source_line": int(row["source_line"]), "issue": row["issue"],
                                      "detail": row["detail"]})
@@ -239,12 +253,19 @@ class ReportAnalyst:
                                      "amount_czk": format_czk(abs(Decimal(row["amount_czk"]))),
                                      "review_reason": row["review_reason"]})
 
+        # Category -> lines with a missing amount (its actual is understated).
+        understated = {}
+        for item in missing:
+            if item["likely_category"] != "unclear":
+                understated.setdefault(item["likely_category"], []).append(item["source_line"])
+
         self.results["exceptions"] = {
             "duplicates_removed": duplicates,
             "duplicates_count": len(duplicates),
             "duplicates_total_czk": format_czk(duplicates_total),
             "missing_amounts": missing,
             "missing_amounts_count": len(missing),
+            "understated_categories": understated,
             "other_issues": other_issues,
             "needs_review": needs_review,
             "needs_review_count": len(needs_review),
@@ -302,7 +323,7 @@ def make_analyst_tools(analyst):
         },
         {
             "name": "find_unusual_items",
-            "description": f"Find categories more than {config.OVER_BUDGET_THRESHOLD:.0%} over budget and single "
+            "description": f"Find categories more than {config.OVER_BUDGET_THRESHOLD:.0%} over or under budget and single "
                            f"expenses above {config.LARGE_TRANSACTION_THRESHOLD:,} CZK outside "
                            f"{' and '.join(config.LARGE_TRANSACTION_EXCLUDED_CATEGORIES)}.",
             "input_schema": no_inputs,

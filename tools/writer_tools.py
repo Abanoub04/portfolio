@@ -73,7 +73,8 @@ class ReportWriter:
                              + "; ".join(problems))
 
         report = self.build_report(summary.strip(), unusual_items_comment.strip(), exceptions_comment.strip())
-        path = self.output_dir / config.REPORT_FILE_NAME
+        # Saved as a draft: only the Manager publishes the final report, after review.
+        path = self.output_dir / config.DRAFT_REPORT_FILE_NAME
         path.write_text(report, encoding="utf-8")
         return {"file": path.name, "lines": report.count("\n") + 1, "number_check": "all numbers come from the analysis"}
 
@@ -100,6 +101,7 @@ class ReportWriter:
     def budget_section(self):
         budget = self.analysis["budget_vs_actual"]
         totals = self.analysis["totals"]
+        understated = self.analysis["exceptions"]["understated_categories"]
         lines = [
             "## Budget vs actual",
             "",
@@ -107,14 +109,23 @@ class ReportWriter:
             "|---|---:|---:|---:|---:|",
         ]
         for row in budget["categories"]:
-            lines.append(f"| {row['category']} | {row['actual_czk']} | {row['budget_czk']} | "
+            # A * marks categories whose actual is understated (amounts still missing).
+            name = row["category"] + (" *" if row["category"] in understated else "")
+            lines.append(f"| {name} | {row['actual_czk']} | {row['budget_czk']} | "
                          f"{row['variance_czk']} | {row['variance_percent']} |")
         total = budget["total"]
         lines.append(f"| **{total['category']}** | **{total['actual_czk']}** | **{total['budget_czk']}** | "
                      f"**{total['variance_czk']}** | **{total['variance_percent']}** |")
+        lines.append("")
+        if understated:
+            parts = [f"{category} (line {', '.join(str(n) for n in found)})"
+                     for category, found in understated.items()]
+            lines += [f"\\* Actual understated – amount still missing for: {'; '.join(parts)}. "
+                      f"See Exceptions.", ""]
         lines += [
+            f"{budget['note']}.",
             "",
-            f"{budget['note']}. Sales income for the month: {totals['sales_income_czk']} "
+            f"Side note: sales income for the month was {totals['sales_income_czk']} "
             f"({totals['sales_transactions']} invoices).",
             "",
         ]
@@ -131,6 +142,17 @@ class ReportWriter:
                 largest = ", ".join(f"{x['description']} {x['amount_czk']}" for x in item.get("largest_items", []))
                 lines.append(f"- **{item['category']}**: actual {item['actual_czk']} vs budget {item['budget_czk']} "
                              f"({item['variance_czk']}, {item['variance_percent']}). Largest items: {largest}.")
+        else:
+            lines.append("- None.")
+        lines.append("")
+
+        lines.append(f"**Categories more than {unusual['over_budget_threshold']} under budget**")
+        lines.append("")
+        if unusual["categories_under_budget"]:
+            for item in unusual["categories_under_budget"]:
+                lines.append(f"- **{item['category']}**: actual {item['actual_czk']} vs budget {item['budget_czk']} "
+                             f"({item['variance_czk']}, {item['variance_percent']}). "
+                             f"Note: {item['note']}.")
         else:
             lines.append("- None.")
         lines.append("")
@@ -163,10 +185,12 @@ class ReportWriter:
                              for x in exceptions["duplicates_removed"]])
 
         lines.append(f"**Missing amounts to follow up** ({exceptions['missing_amounts_count']}) – "
-                     f"not included in the totals until the amount is known")
+                     f"not included in the totals until the amount is known, so the actual "
+                     f"of the likely category is understated")
         lines.append("")
-        lines += self.table(["Line", "Date", "Description", "Counterparty"],
-                            [[x["source_line"], x["date"], x["description"], x["counterparty"]]
+        lines += self.table(["Line", "Date", "Description", "Counterparty", "Likely category"],
+                            [[x["source_line"], x["date"], x["description"], x["counterparty"],
+                              x["likely_category"]]
                              for x in exceptions["missing_amounts"]])
 
         lines.append(f"**Items needing review** ({exceptions['needs_review_count']}) – "

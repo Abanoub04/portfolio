@@ -26,7 +26,7 @@ class AgentError(Exception):
 
 
 class Agent:
-    def __init__(self, name, instructions, tools, log, fake_script=None):
+    def __init__(self, name, instructions, tools, log, fake_script=None, max_steps=None):
         """
         name:         who this agent is, e.g. "Collector" (used in the log)
         instructions: the agent's job description (the "system prompt")
@@ -34,11 +34,13 @@ class Agent:
                       name, description, input_schema and function
         log:          the shared ActionLog for this run
         fake_script:  what the agent does in test mode (see FakeModel)
+        max_steps:    safety brake for this agent (default: config.MAX_STEPS)
         """
         self.name = name
         self.instructions = instructions
         self.log = log
         self.model = create_model(fake_script)
+        self.max_steps = max_steps or config.MAX_STEPS
 
         # A dictionary from tool name to tool, so a tool can be looked up
         # by the name the model asks for.
@@ -66,7 +68,7 @@ class Agent:
         # with every round of the loop.
         messages = [{"role": "user", "content": task}]
 
-        for step in range(1, config.MAX_STEPS + 1):
+        for step in range(1, self.max_steps + 1):
             # 1. Ask the model what to do next.
             response = self.model.respond(self.instructions, messages, self.tool_list_for_model())
 
@@ -101,8 +103,8 @@ class Agent:
             raise AgentError(f"{self.name} stopped unexpectedly: {response.stop_reason}")
 
         # The safety brake: too many rounds without finishing.
-        self.log.write(self.name, "ERROR", f"Gave up after {config.MAX_STEPS} steps")
-        raise AgentError(f"{self.name} did not finish within {config.MAX_STEPS} steps")
+        self.log.write(self.name, "ERROR", f"Gave up after {self.max_steps} steps")
+        raise AgentError(f"{self.name} did not finish within {self.max_steps} steps")
 
     def use_tool(self, block, step):
         """Run the tool the model asked for and package the result for the model."""
